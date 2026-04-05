@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Calendar, Clock, Users, ArrowRight } from 'lucide-react';
 import GeneratedImage from './GeneratedImage';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface ReservationModalProps {
   isOpen: boolean;
@@ -9,6 +11,95 @@ interface ReservationModalProps {
 }
 
 export default function ReservationModal({ isOpen, onClose }: ReservationModalProps) {
+  const timeOptions = useMemo(() => ([
+    '10:00 AM',
+    '12:00 PM',
+    '2:00 PM',
+    '6:00 PM',
+    '8:00 PM',
+  ]), []);
+
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    guests: '',
+    date: '',
+    time: '',
+    notes: '',
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  const onChange = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    setForm(prev => ({ ...prev, [key]: e.target.value }));
+  };
+
+  const resetForm = () => {
+    setForm({
+      name: '',
+      email: '',
+      phone: '',
+      guests: '',
+      date: '',
+      time: '',
+      notes: '',
+    });
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      setError(null);
+      setSuccess(false);
+    }
+  }, [isOpen]);
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(false);
+
+    if (!form.guests || !form.date || !form.time) {
+      setError('Please select guests, date, and time.');
+      return;
+    }
+
+    const guestsNum = Number(form.guests);
+    if (!Number.isFinite(guestsNum) || guestsNum <= 0) {
+      setError('Please choose a valid number of guests.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const payload = {
+        name: form.name.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        date: form.date,
+        time: form.time,
+        guests: guestsNum,
+        notes: form.notes.trim(),
+        status: 'pending',
+        createdAt: serverTimestamp(),
+      };
+      const savePromise = addDoc(collection(db, 'reservations'), payload);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Save timed out. Check your Firestore rules or network.')), 8000);
+      });
+      await Promise.race([savePromise, timeoutPromise]);
+      setSuccess(true);
+      resetForm();
+    } catch (err) {
+      console.error('Reservation submit failed', err);
+      const msg = err instanceof Error ? err.message : 'Unable to submit reservation. Please try again.';
+      setError(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -59,7 +150,7 @@ export default function ReservationModal({ isOpen, onClose }: ReservationModalPr
 
             {/* Right Side: Form */}
             <div className="md:w-3/5 p-12">
-              <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
+              <form className="space-y-6" onSubmit={onSubmit}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div className="relative">
                     <input 
@@ -67,6 +158,8 @@ export default function ReservationModal({ isOpen, onClose }: ReservationModalPr
                       placeholder="Your Name *" 
                       className="w-full border-b border-gray-200 py-3 focus:outline-none focus:border-gold transition-colors"
                       required
+                      value={form.name}
+                      onChange={onChange('name')}
                     />
                   </div>
                   <div className="relative">
@@ -75,6 +168,8 @@ export default function ReservationModal({ isOpen, onClose }: ReservationModalPr
                       placeholder="Email Address *" 
                       className="w-full border-b border-gray-200 py-3 focus:outline-none focus:border-gold transition-colors"
                       required
+                      value={form.email}
+                      onChange={onChange('email')}
                     />
                   </div>
                   <div className="relative">
@@ -83,37 +178,50 @@ export default function ReservationModal({ isOpen, onClose }: ReservationModalPr
                       placeholder="Phone *" 
                       className="w-full border-b border-gray-200 py-3 focus:outline-none focus:border-gold transition-colors"
                       required
+                      value={form.phone}
+                      onChange={onChange('phone')}
                     />
                   </div>
                   <div className="relative flex items-center">
-                    <Users size={16} className="absolute right-0 text-gray-400" />
-                    <select className="w-full border-b border-gray-200 py-3 focus:outline-none focus:border-gold transition-colors bg-transparent appearance-none">
-                      <option>Persons</option>
-                      <option>1 Person</option>
-                      <option>2 People</option>
-                      <option>3 People</option>
-                      <option>4 People</option>
-                      <option>5 People</option>
-                      <option>Banquet</option>
+                    <Users size={16} className="absolute right-0 text-gray-400 pointer-events-none" />
+                    <select
+                      className="w-full border-b border-gray-200 py-3 focus:outline-none focus:border-gold transition-colors bg-transparent appearance-none"
+                      required
+                      value={form.guests}
+                      onChange={onChange('guests')}
+                    >
+                      <option value="" disabled>Persons</option>
+                      <option value="1">1 Person</option>
+                      <option value="2">2 People</option>
+                      <option value="3">3 People</option>
+                      <option value="4">4 People</option>
+                      <option value="5">5 People</option>
+                      <option value="10">Banquet</option>
                     </select>
                   </div>
                   <div className="relative flex items-center">
-                    <Calendar size={16} className="absolute right-0 text-gray-400" />
+                    <Calendar size={16} className="absolute right-0 text-gray-400 pointer-events-none" />
                     <input 
-                      type="text" 
+                      type="date" 
                       placeholder="Date" 
                       className="w-full border-b border-gray-200 py-3 focus:outline-none focus:border-gold transition-colors"
+                      required
+                      value={form.date}
+                      onChange={onChange('date')}
                     />
                   </div>
                   <div className="relative flex items-center">
-                    <Clock size={16} className="absolute right-0 text-gray-400" />
-                    <select className="w-full border-b border-gray-200 py-3 focus:outline-none focus:border-gold transition-colors bg-transparent appearance-none">
-                      <option>Time</option>
-                      <option>10:00 am</option>
-                      <option>12:00 pm</option>
-                      <option>2:00 pm</option>
-                      <option>6:00 pm</option>
-                      <option>8:00 pm</option>
+                    <Clock size={16} className="absolute right-0 text-gray-400 pointer-events-none" />
+                    <select
+                      className="w-full border-b border-gray-200 py-3 focus:outline-none focus:border-gold transition-colors bg-transparent appearance-none"
+                      required
+                      value={form.time}
+                      onChange={onChange('time')}
+                    >
+                      <option value="" disabled>Time</option>
+                      {timeOptions.map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -122,10 +230,19 @@ export default function ReservationModal({ isOpen, onClose }: ReservationModalPr
                   placeholder="Your Message:" 
                   rows={3}
                   className="w-full border-b border-gray-200 py-3 focus:outline-none focus:border-gold transition-colors resize-none"
+                  value={form.notes}
+                  onChange={onChange('notes')}
                 />
 
-                <button className="w-full bg-gold text-white py-4 font-bold uppercase tracking-widest hover:bg-dark transition-all flex items-center justify-center gap-3 group">
-                  Reserve Table
+                {error && <div className="text-sm text-red-600">{error}</div>}
+                {success && <div className="text-sm text-green-600">Reservation submitted! See you soon.</div>}
+
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full bg-gold text-white py-4 font-bold uppercase tracking-widest hover:bg-dark transition-all flex items-center justify-center gap-3 group disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {submitting ? 'Submitting...' : 'Reserve Table'}
                   <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
                 </button>
               </form>

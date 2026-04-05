@@ -28,6 +28,8 @@ export default function ReservationsTab() {
   const { role } = useAuth();
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [filter, setFilter] = useState<'all' | Reservation['status']>('all');
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'reservations'), orderBy('createdAt', 'desc'));
@@ -37,7 +39,17 @@ export default function ReservationsTab() {
   }, []);
 
   const updateStatus = async (id: string, status: Reservation['status']) => {
-    await updateDoc(doc(db, 'reservations', id), { status });
+    setError(null);
+    setUpdatingId(id);
+    try {
+      await updateDoc(doc(db, 'reservations', id), { status });
+    } catch (err) {
+      console.error('Update reservation status failed', err);
+      const msg = err instanceof Error ? err.message : 'Failed to update reservation status.';
+      setError(msg);
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
   const filtered = filter === 'all' ? reservations : reservations.filter(r => r.status === filter);
@@ -66,6 +78,11 @@ export default function ReservationsTab() {
         <div className="text-center py-20 text-white/20 font-mono text-sm">No reservations found.</div>
       ) : (
         <div className="space-y-3">
+          {error && (
+            <div className="text-sm text-red-400 border border-red-500/20 bg-red-500/5 px-3 py-2">
+              {error}
+            </div>
+          )}
           {filtered.map(r => (
             <div key={r.id} className="bg-white/3 border border-white/10 p-5">
               <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -100,7 +117,8 @@ export default function ReservationsTab() {
                     <button
                       key={s}
                       onClick={() => updateStatus(r.id, s)}
-                      className="text-[10px] uppercase tracking-widest font-mono px-3 py-1.5 border border-white/10 text-white/40 hover:border-gold/50 hover:text-gold transition-all"
+                      disabled={updatingId === r.id}
+                      className="text-[10px] uppercase tracking-widest font-mono px-3 py-1.5 border border-white/10 text-white/40 hover:border-gold/50 hover:text-gold transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       Mark {s}
                     </button>
