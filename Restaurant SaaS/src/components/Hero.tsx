@@ -1,15 +1,15 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { Play, ArrowRight, ChevronDown } from 'lucide-react';
-import GeneratedImage from './GeneratedImage';
 
 export default function Hero() {
   return (
     <section className="relative h-screen w-full overflow-hidden flex items-center justify-center">
       {/* Background */}
       <div className="absolute inset-0 z-0 scale-110">
-        <GeneratedImage 
-          prompt="Luxury restaurant interior with elegant tables, warm lighting, high-end fine dining atmosphere, 8k resolution"
+        <img
+          src="/hero-bg.png"
+          alt="Hero background"
           className="w-full h-full object-cover"
         />
         <div className="absolute inset-0 bg-black/50 z-10" />
@@ -17,23 +17,70 @@ export default function Hero() {
 
       {/* Content */}
       <div className="container mx-auto px-4 relative z-20 text-center text-white">
-        <motion.h4 
+        {/* Ornament top */}
+        <motion.div
+          initial={{ opacity: 0, scaleX: 0 }}
+          animate={{ opacity: 1, scaleX: 1 }}
+          transition={{ duration: 0.8, delay: 0.1 }}
+          className="flex items-center justify-center gap-3 mb-6"
+        >
+          <div className="h-[1px] w-20 bg-gradient-to-r from-transparent to-gold/70" />
+          <div className="w-1.5 h-1.5 bg-gold rotate-45" />
+          <div className="w-2 h-2 border border-gold rotate-45" />
+          <div className="w-1.5 h-1.5 bg-gold rotate-45" />
+          <div className="h-[1px] w-20 bg-gradient-to-l from-transparent to-gold/70" />
+        </motion.div>
+
+        <motion.p
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.2 }}
-          className="text-gold uppercase tracking-[0.3em] font-mono text-sm mb-6"
+          className="text-gold/80 uppercase tracking-[0.5em] font-mono text-xs mb-5"
         >
           Top Services and Premium Cuisine
-        </motion.h4>
-        
-        <motion.h2 
-          initial={{ opacity: 0, y: 30 }}
+        </motion.p>
+
+        {/* Main title */}
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.4 }}
-          className="text-5xl md:text-7xl lg:text-8xl font-serif mb-12 leading-tight"
+          transition={{ duration: 1, delay: 0.35 }}
+          className="relative mb-3"
         >
-          Welcome to <br /> Restabook Restaurant
-        </motion.h2>
+          {/* Ghost outline behind */}
+          <h2
+            aria-hidden="true"
+            className="absolute inset-0 text-[6rem] md:text-[9rem] lg:text-[12rem] font-serif italic font-bold text-center leading-none select-none pointer-events-none"
+            style={{
+              WebkitTextStroke: '1px rgba(193,157,104,0.18)',
+              color: 'transparent',
+              transform: 'translate(4px, 6px)',
+            }}
+          >
+            Unwind
+          </h2>
+          {/* Main text */}
+          <h2
+            className="text-[6rem] md:text-[9rem] lg:text-[12rem] font-serif italic font-bold text-center leading-none"
+            style={{ textShadow: '0 4px 40px rgba(0,0,0,0.6)' }}
+          >
+            Unwind
+          </h2>
+        </motion.div>
+
+        {/* Ornament bottom */}
+        <motion.div
+          initial={{ opacity: 0, scaleX: 0 }}
+          animate={{ opacity: 1, scaleX: 1 }}
+          transition={{ duration: 0.8, delay: 0.5 }}
+          className="flex items-center justify-center gap-3 mb-8"
+        >
+          <div className="h-[1px] w-16 bg-gradient-to-r from-transparent to-gold/50" />
+          <div className="w-1 h-1 bg-gold/60 rotate-45" />
+          <span className="text-gold/60 font-mono text-[10px] tracking-[0.4em] uppercase">Est. 2020</span>
+          <div className="w-1 h-1 bg-gold/60 rotate-45" />
+          <div className="h-[1px] w-16 bg-gradient-to-l from-transparent to-gold/50" />
+        </motion.div>
 
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}

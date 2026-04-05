@@ -62,13 +62,18 @@ export default function Header({ onOpenReservation, onOpenCart }: HeaderProps) {
       )}>
         <div className="container mx-auto px-4 flex justify-between items-center">
           {/* Logo */}
-          <a href="/" className="relative z-50">
-            <img 
-              src="https://restabook.kwst.net/images/logo.png" 
-              alt="Restabook" 
-              className={cn("transition-all duration-300", isScrolled ? "h-8" : "h-10")}
-              referrerPolicy="no-referrer"
-            />
+          <a href="/" className="relative z-50 flex flex-col items-center leading-none group">
+            <span className={cn(
+              "font-serif italic text-dark tracking-wide transition-all duration-300 group-hover:text-gold",
+              isScrolled ? "text-2xl" : "text-3xl"
+            )}>
+              Unwind
+            </span>
+            <span className="flex items-center gap-1.5 w-full justify-center">
+              <span className="h-[1px] flex-1 bg-gold/60" />
+              <span className="text-gold text-[8px] font-mono uppercase tracking-[0.25em]">Restaurant</span>
+              <span className="h-[1px] flex-1 bg-gold/60" />
+            </span>
           </a>
 
           {/* Desktop Navigation */}

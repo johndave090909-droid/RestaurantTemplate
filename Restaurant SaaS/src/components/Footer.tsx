@@ -14,7 +14,7 @@ export default function Footer() {
           <a href="/" className="relative z-10">
             <img 
               src="https://restabook.kwst.net/images/logo2.png" 
-              alt="Restabook" 
+              alt="Unwind"
               className="h-10"
               referrerPolicy="no-referrer"
             />
@@ -103,8 +103,14 @@ export default function Footer() {
 
         {/* Footer Bottom */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-8 pt-12 border-t border-white/5">
-          <div className="text-white/30 text-xs uppercase tracking-widest">
-            © Restabook 2020 . All rights reserved.
+          <div className="text-white/30 text-xs uppercase tracking-widest flex items-center gap-1">
+            © Unwind 2020 . All rights reserved.
+            <a
+              href="/admin"
+              aria-hidden="true"
+              tabIndex={-1}
+              className="w-2 h-2 opacity-0 select-none"
+            />
           </div>
           
           <button 
