@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Calendar, Clock, Users, ArrowRight } from 'lucide-react';
 import GeneratedImage from './GeneratedImage';
@@ -31,6 +31,7 @@ export default function ReservationModal({ isOpen, onClose }: ReservationModalPr
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const dateRef = useRef<HTMLInputElement | null>(null);
 
   const onChange = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setForm(prev => ({ ...prev, [key]: e.target.value }));
@@ -100,10 +101,25 @@ export default function ReservationModal({ isOpen, onClose }: ReservationModalPr
     }
   };
 
+  const openDatePicker = () => {
+    const el = dateRef.current;
+    if (!el) return;
+    // Some mobile browsers require calling showPicker() from a user gesture.
+    try {
+      if (typeof (el as HTMLInputElement).showPicker === 'function') {
+        (el as HTMLInputElement).showPicker();
+      } else {
+        el.focus();
+      }
+    } catch {
+      el.focus();
+    }
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 sm:p-4">
           {/* Overlay */}
           <motion.div
             initial={{ opacity: 0 }}
@@ -118,7 +134,7 @@ export default function ReservationModal({ isOpen, onClose }: ReservationModalPr
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="relative w-full max-w-4xl bg-white flex flex-col md:flex-row max-h-[90vh] overflow-y-auto md:overflow-hidden overscroll-contain"
+            className="relative w-full h-full sm:h-auto sm:max-w-4xl bg-white flex flex-col md:flex-row overflow-y-auto md:overflow-hidden overscroll-contain"
           >
             {/* Close Button */}
             <button 
@@ -205,8 +221,11 @@ export default function ReservationModal({ isOpen, onClose }: ReservationModalPr
                       placeholder="Date" 
                       className="w-full border-b border-gray-200 py-3 focus:outline-none focus:border-gold transition-colors touch-manipulation"
                       required
+                      ref={dateRef}
                       value={form.date}
                       onChange={onChange('date')}
+                      onFocus={openDatePicker}
+                      onClick={openDatePicker}
                     />
                   </div>
                   <div className="relative flex items-center">
