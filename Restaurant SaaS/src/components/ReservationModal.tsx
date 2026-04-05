@@ -118,7 +118,7 @@ export default function ReservationModal({ isOpen, onClose }: ReservationModalPr
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="relative w-full max-w-4xl bg-white overflow-hidden flex flex-col md:flex-row"
+            className="relative w-full max-w-4xl bg-white flex flex-col md:flex-row max-h-[90vh] overflow-y-auto md:overflow-hidden overscroll-contain"
           >
             {/* Close Button */}
             <button 
@@ -165,9 +165,8 @@ export default function ReservationModal({ isOpen, onClose }: ReservationModalPr
                   <div className="relative">
                     <input 
                       type="email" 
-                      placeholder="Email Address *" 
+                      placeholder="Email Address" 
                       className="w-full border-b border-gray-200 py-3 focus:outline-none focus:border-gold transition-colors"
-                      required
                       value={form.email}
                       onChange={onChange('email')}
                     />
@@ -204,7 +203,7 @@ export default function ReservationModal({ isOpen, onClose }: ReservationModalPr
                     <input 
                       type="date" 
                       placeholder="Date" 
-                      className="w-full border-b border-gray-200 py-3 focus:outline-none focus:border-gold transition-colors"
+                      className="w-full border-b border-gray-200 py-3 focus:outline-none focus:border-gold transition-colors touch-manipulation"
                       required
                       value={form.date}
                       onChange={onChange('date')}
