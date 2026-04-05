@@ -56,6 +56,29 @@ export default function ReservationModal({ isOpen, onClose }: ReservationModalPr
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const body = document.body;
+    const scrollY = window.scrollY || window.pageYOffset;
+    const prev = {
+      overflow: body.style.overflow,
+      position: body.style.position,
+      top: body.style.top,
+      width: body.style.width,
+    };
+    body.style.overflow = 'hidden';
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY}px`;
+    body.style.width = '100%';
+    return () => {
+      body.style.overflow = prev.overflow;
+      body.style.position = prev.position;
+      body.style.top = prev.top;
+      body.style.width = prev.width;
+      window.scrollTo(0, scrollY);
+    };
+  }, [isOpen]);
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -134,7 +157,8 @@ export default function ReservationModal({ isOpen, onClose }: ReservationModalPr
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="relative w-full h-full sm:h-auto sm:max-w-4xl bg-white flex flex-col md:flex-row overflow-y-auto md:overflow-hidden overscroll-contain"
+            className="relative w-full h-full sm:h-auto sm:max-w-4xl bg-white flex flex-col md:flex-row overflow-y-auto md:overflow-hidden overscroll-contain touch-pan-y"
+            style={{ WebkitOverflowScrolling: 'touch' }}
           >
             {/* Close Button */}
             <button 
