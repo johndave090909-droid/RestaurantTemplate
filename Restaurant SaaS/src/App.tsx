@@ -21,6 +21,8 @@ import CartDrawer from './components/CartDrawer';
 import AdminLoginPage from './pages/admin/AdminLoginPage';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminGuard from './pages/admin/AdminGuard';
+import POSScreen from './pages/pos/POSScreen';
+import KitchenDisplay from './pages/kitchen/KitchenDisplay';
 
 function PublicSite() {
   const [isReservationOpen, setIsReservationOpen] = useState(false);
@@ -72,6 +74,22 @@ export default function App() {
               element={
                 <AdminGuard>
                   <AdminDashboard />
+                </AdminGuard>
+              }
+            />
+            <Route
+              path="/pos"
+              element={
+                <AdminGuard>
+                  <POSScreen />
+                </AdminGuard>
+              }
+            />
+            <Route
+              path="/kitchen"
+              element={
+                <AdminGuard>
+                  <KitchenDisplay />
                 </AdminGuard>
               }
             />

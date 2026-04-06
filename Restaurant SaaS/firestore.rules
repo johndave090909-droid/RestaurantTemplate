@@ -1,0 +1,95 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helpers ───────────────────────────────────────────────────────────────
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      let userDoc = /databases/$(database)/documents/users/$(request.auth.uid);
+      return exists(userDoc) ? get(userDoc).data : null;
+    }
+
+    function role() {
+      let data = getUserData();
+      return data != null ? data.role : null;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && role() == 'superAdmin';
+    }
+
+    function isAdmin() {
+      return isSignedIn() && role() in ['superAdmin', 'admin'];
+    }
+
+    function isManager() {
+      return isSignedIn() && role() in ['superAdmin', 'admin', 'manager'];
+    }
+
+    function isStaff() {
+      return isSignedIn() && role() in ['superAdmin', 'admin', 'manager', 'staff'];
+    }
+
+    // ─── Users (staff records) ─────────────────────────────────────────────────
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      // Allow a user to create their own record (needed on first login)
+      allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // ─── Site Config ───────────────────────────────────────────────────────────
+
+    match /siteConfig/{docId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    // ─── Menu Items ────────────────────────────────────────────────────────────
+
+    match /menuItems/{itemId} {
+      allow read: if true;
+      allow create, update, delete: if isManager();
+    }
+
+    // ─── Reservations ──────────────────────────────────────────────────────────
+
+    match /reservations/{reservationId} {
+      allow create: if true;
+      allow read: if isStaff();
+      allow update: if isManager();
+      allow delete: if isManager();
+    }
+
+    // ─── Orders ────────────────────────────────────────────────────────────────
+
+    match /orders/{orderId} {
+      allow create: if isStaff();
+      allow read: if isStaff();
+      // Staff can update status (needed for kitchen display)
+      allow update: if isStaff();
+      allow delete: if isAdmin();
+    }
+
+    // ─── Sales ─────────────────────────────────────────────────────────────────
+
+    match /sales/{saleId} {
+      allow create: if isStaff();
+      allow read: if isManager();
+      allow delete: if isAdmin();
+    }
+
+    // ─── Deny everything else ──────────────────────────────────────────────────
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

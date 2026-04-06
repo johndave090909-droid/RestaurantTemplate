@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { Plus, Pencil, Trash2, Check, X } from 'lucide-react';
+import SeedMenuButton from './SeedMenuButton';
 
 interface MenuItem {
   id: string;
@@ -73,14 +74,17 @@ export default function MenuTab() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h2 className="text-white font-serif text-2xl">Menu & Prices</h2>
-        <button
-          onClick={() => { setAdding(true); setEditId(null); setForm(empty()); }}
-          className="flex items-center gap-2 bg-gold hover:bg-gold/80 text-white px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all"
-        >
-          <Plus size={14} /> Add Item
-        </button>
+        <div className="flex items-center gap-2">
+          <SeedMenuButton />
+          <button
+            onClick={() => { setAdding(true); setEditId(null); setForm(empty()); }}
+            className="flex items-center gap-2 bg-gold hover:bg-gold/80 text-white px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all"
+          >
+            <Plus size={14} /> Add Item
+          </button>
+        </div>
       </div>
 
       {/* Category filter */}

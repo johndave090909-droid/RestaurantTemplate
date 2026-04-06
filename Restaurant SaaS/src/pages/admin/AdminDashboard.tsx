@@ -1,19 +1,20 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, ShoppingBag, Calendar, UtensilsCrossed, Users, Settings, Menu as MenuIcon, X } from 'lucide-react';
+import { LogOut, ShoppingBag, Calendar, UtensilsCrossed, Users, Settings, Menu as MenuIcon, X, MonitorSmartphone, BarChart2, ChefHat } from 'lucide-react';
 import { useAuth, can } from '../../context/AuthContext';
 import OrdersTab from './tabs/OrdersTab';
 import ReservationsTab from './tabs/ReservationsTab';
 import MenuTab from './tabs/MenuTab';
 import StaffTab from './tabs/StaffTab';
 import SiteSettingsTab from './tabs/SiteSettingsTab';
+import SalesTab from './tabs/SalesTab';
 
-type Tab = 'orders' | 'reservations' | 'menu' | 'staff' | 'site';
+type Tab = 'sales' | 'orders' | 'reservations' | 'menu' | 'staff' | 'site';
 
 export default function AdminDashboard() {
   const { user, role, logout } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<Tab>('orders');
+  const [activeTab, setActiveTab] = useState<Tab>('sales');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const handleLogout = async () => {
@@ -22,6 +23,7 @@ export default function AdminDashboard() {
   };
 
   const tabs = ([
+    { id: 'sales' as Tab, label: 'Sales Report', icon: <BarChart2 size={16} />, show: can.manageMenu(role) },
     { id: 'orders' as Tab, label: 'Orders', icon: <ShoppingBag size={16} />, show: can.viewOrders(role) },
     { id: 'reservations' as Tab, label: 'Reservations', icon: <Calendar size={16} />, show: can.viewReservations(role) },
     { id: 'menu' as Tab, label: 'Menu & Prices', icon: <UtensilsCrossed size={16} />, show: can.manageMenu(role) },
@@ -48,6 +50,22 @@ export default function AdminDashboard() {
             <div className="h-[1px] flex-1 bg-gold/30" />
           </div>
         </a>
+      </div>
+
+      {/* Quick launch buttons */}
+      <div className="px-3 pt-3 space-y-2">
+        <button
+          onClick={() => navigate('/pos')}
+          className="w-full flex items-center justify-center gap-2 bg-gold hover:bg-gold/80 text-white py-2.5 text-xs font-bold uppercase tracking-widest transition-all"
+        >
+          <MonitorSmartphone size={14} /> Open POS
+        </button>
+        <button
+          onClick={() => navigate('/kitchen')}
+          className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white py-2.5 text-xs font-bold uppercase tracking-widest transition-all"
+        >
+          <ChefHat size={14} /> Kitchen Display
+        </button>
       </div>
 
       {/* Nav */}
@@ -124,6 +142,7 @@ export default function AdminDashboard() {
         </div>
 
         <main className="flex-1 p-6 lg:p-8 max-w-5xl w-full">
+          {activeTab === 'sales' && <SalesTab />}
           {activeTab === 'orders' && <OrdersTab />}
           {activeTab === 'reservations' && <ReservationsTab />}
           {activeTab === 'menu' && <MenuTab />}
