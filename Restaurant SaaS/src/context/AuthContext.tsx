@@ -6,7 +6,7 @@ import {
   GoogleAuthProvider,
   User,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 
 export type Role = 'superAdmin' | 'admin' | 'manager' | 'staff';
@@ -27,6 +27,14 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 const provider = new GoogleAuthProvider();
 
+async function findUserByEmail(email: string) {
+  if (!email) return null;
+  const q = query(collection(db, 'users'), where('email', '==', email));
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  return snap.docs[0];
+}
+
 async function resolveRole(user: User): Promise<Role> {
   const email = user.email?.toLowerCase() ?? '';
   if (SUPER_ADMIN_EMAILS.includes(email)) return 'superAdmin';
@@ -34,7 +42,11 @@ async function resolveRole(user: User): Promise<Role> {
   const snap = await getDoc(doc(db, 'users', user.uid));
   if (snap.exists()) return (snap.data().role as Role) ?? 'staff';
 
-  return 'staff'; // unknown user — no access granted
+  // Fallback: allow matching by email for pre-created/invited users
+  const byEmail = await findUserByEmail(email);
+  if (byEmail) return (byEmail.data().role as Role) ?? 'staff';
+
+  return 'staff'; // unknown user - no access granted
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -73,10 +85,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const snap = await getDoc(doc(db, 'users', u.uid));
+    let snap = await getDoc(doc(db, 'users', u.uid));
     if (!snap.exists()) {
-      await signOut(auth);
-      throw new Error('Access denied. Your account has not been granted access.');
+      const byEmail = await findUserByEmail(email);
+      if (!byEmail) {
+        await signOut(auth);
+        throw new Error('Access denied. Your account has not been granted access.');
+      }
+      // Link the invite record to the real UID for future fast lookups
+      await setDoc(doc(db, 'users', u.uid), {
+        email: u.email,
+        displayName: u.displayName,
+        role: (byEmail.data().role as Role) ?? 'staff',
+        photoURL: u.photoURL,
+      }, { merge: true });
+      snap = await getDoc(doc(db, 'users', u.uid));
     }
     const r = snap.data().role as Role;
     setRole(r);

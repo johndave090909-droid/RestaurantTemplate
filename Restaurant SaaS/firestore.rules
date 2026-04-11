@@ -38,7 +38,11 @@ service cloud.firestore {
     // ─── Users (staff records) ─────────────────────────────────────────────────
 
     match /users/{userId} {
-      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow read: if isSignedIn() && (
+        request.auth.uid == userId ||
+        isAdmin() ||
+        resource.data.email == request.auth.token.email
+      );
       // Allow a user to create their own record (needed on first login)
       allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
