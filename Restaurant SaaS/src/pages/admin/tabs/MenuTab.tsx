@@ -71,6 +71,7 @@ export default function MenuTab() {
   );
 
   const inputCls = "w-full bg-white/5 border border-white/10 px-3 py-2 text-white text-sm focus:outline-none focus:border-gold/50 transition-colors";
+  const selectCls = "w-full bg-zinc-900 border border-white/10 px-3 py-2 text-white text-sm focus:outline-none focus:border-gold/50 transition-colors cursor-pointer [&>option]:bg-zinc-900 [&>option]:text-white";
 
   return (
     <div>
@@ -106,13 +107,13 @@ export default function MenuTab() {
           <div className="grid grid-cols-2 gap-3">
             <Field label="Name"><input className={inputCls} value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Grilled Salmon" /></Field>
             <Field label="Category">
-              <select className={inputCls + " cursor-pointer"} value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))}>
+              <select className={selectCls} value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))}>
                 {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </Field>
             <Field label="Price ($)"><input type="number" min={0} step={0.01} className={inputCls} value={form.price} onChange={e => setForm(p => ({ ...p, price: parseFloat(e.target.value) || 0 }))} /></Field>
             <Field label="Available">
-              <select className={inputCls + " cursor-pointer"} value={form.available ? 'yes' : 'no'} onChange={e => setForm(p => ({ ...p, available: e.target.value === 'yes' }))}>
+              <select className={selectCls} value={form.available ? 'yes' : 'no'} onChange={e => setForm(p => ({ ...p, available: e.target.value === 'yes' }))}>
                 <option value="yes">Yes</option>
                 <option value="no">No</option>
               </select>
@@ -139,13 +140,13 @@ export default function MenuTab() {
                     <div className="grid grid-cols-2 gap-3">
                       <Field label="Name"><input className={inputCls} value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} /></Field>
                       <Field label="Category">
-                        <select className={inputCls + " cursor-pointer"} value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))}>
+                        <select className={selectCls} value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))}>
                           {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                       </Field>
                       <Field label="Price ($)"><input type="number" min={0} step={0.01} className={inputCls} value={form.price} onChange={e => setForm(p => ({ ...p, price: parseFloat(e.target.value) || 0 }))} /></Field>
                       <Field label="Available">
-                        <select className={inputCls + " cursor-pointer"} value={form.available ? 'yes' : 'no'} onChange={e => setForm(p => ({ ...p, available: e.target.value === 'yes' }))}>
+                        <select className={selectCls} value={form.available ? 'yes' : 'no'} onChange={e => setForm(p => ({ ...p, available: e.target.value === 'yes' }))}>
                           <option value="yes">Yes</option>
                           <option value="no">No</option>
                         </select>

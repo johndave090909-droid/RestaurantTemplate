@@ -128,6 +128,8 @@ export const can = {
   viewReservations: (r: Role | null) => !!r,
   manageReservations: (r: Role | null) => r === 'superAdmin' || r === 'admin' || r === 'manager',
   manageMenu: (r: Role | null) => r === 'superAdmin' || r === 'admin' || r === 'manager',
+  viewInventory: (r: Role | null) => !!r,
+  manageInventory: (r: Role | null) => r === 'superAdmin' || r === 'admin' || r === 'manager',
   manageStaff: (r: Role | null) => r === 'superAdmin' || r === 'admin',
   manageSite: (r: Role | null) => r === 'superAdmin',
 };

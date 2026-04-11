@@ -1,52 +1,43 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ArrowRight, Download } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import GeneratedImage from './GeneratedImage';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '@/src/lib/firebase';
 
 const categories = [
-  { id: 'tab-1', name: 'Main dishes', num: '01.', prompt: 'Gourmet main course dish, steak or roasted meat, high-end plating' },
-  { id: 'tab-2', name: 'Starter', num: '02.', prompt: 'Elegant appetizer, small bites, gourmet presentation' },
-  { id: 'tab-3', name: 'Desserts', num: '03.', prompt: 'Exquisite dessert, chocolate or fruit based, artistic plating' },
-  { id: 'tab-4', name: 'Sea Food', num: '04.', prompt: 'Fresh seafood platter, lobster or oysters, luxury dining' },
-  { id: 'tab-5', name: 'Drinks', num: '05.', prompt: 'Sophisticated cocktails and wine bottles in a bar setting' },
+  { id: 'tab-1', firebaseCategory: 'Mains', name: 'Main Dishes', num: '01.', prompt: 'Gourmet main course dish, steak or roasted meat, high-end plating' },
+  { id: 'tab-2', firebaseCategory: 'Starters', name: 'Starter', num: '02.', prompt: 'Elegant appetizer, small bites, gourmet presentation' },
+  { id: 'tab-3', firebaseCategory: 'Desserts', name: 'Desserts', num: '03.', prompt: 'Exquisite dessert, chocolate or fruit based, artistic plating' },
+  { id: 'tab-4', firebaseCategory: 'Specials', name: 'Specials', num: '04.', prompt: 'Chef special dish, luxury plating, exclusive restaurant offering' },
+  { id: 'tab-5', firebaseCategory: 'Drinks', name: 'Drinks', num: '05.', prompt: 'Sophisticated cocktails and wine bottles in a bar setting' },
 ];
 
-const menuItems: Record<string, any[]> = {
-  'tab-1': [
-    { id: '01.', name: 'Soft shell crab', price: '$29', details: 'Granny help you treat yourself with a different meal everyday' },
-    { id: '02.', name: 'Miso chicken', price: '$19', details: 'Etiam tempus felis eros, id lobortis turpis' },
-    { id: '03.', name: 'Fish pie', price: '$12', details: 'usce tempus tempus maximus volutpat' },
-    { id: '04.', name: 'Salmon riverland', price: '$105', details: 'Fusce a tellus tellus. Praesent neque arcu, efficitur sit amet' },
-  ],
-  'tab-2': [
-    { id: '01.', name: 'Fried Potatoes', price: '$29', details: 'Granny help you treat yourself with a different meal everyday' },
-    { id: '02.', name: 'Doner Burger', price: '$19', details: 'Etiam tempus felis eros, id lobortis turpis' },
-    { id: '03.', name: 'Steak Filet', price: '$12', details: 'usce tempus tempus maximus volutpat' },
-    { id: '04.', name: 'Cayenne Shrimp', price: '$37', details: 'usce tempus tempus maximus volutpat' },
-  ],
-  'tab-3': [
-    { id: '01.', name: 'Soft shell crab', price: '$29', details: 'Granny help you treat yourself with a different meal everyday' },
-    { id: '02.', name: 'Tarte Tatin', price: '$25', details: 'Etiam tempus felis eros, id lobortis turpis' },
-    { id: '03.', name: 'Creme Brulee', price: '$64', details: 'usce tempus tempus maximus volutpat' },
-    { id: '04.', name: 'Lemon Meringue', price: '$12', details: 'usce tempus tempus maximus volutpat' },
-  ],
-  'tab-4': [
-    { id: '01.', name: 'Lobster with melted mozarella', price: '$156', details: 'Granny help you treat yourself with a different meal everyday' },
-    { id: '02.', name: 'Butterfly fried shrimps platter', price: '$98', details: 'Etiam tempus felis eros, id lobortis turpis' },
-  ],
-  'tab-5': [
-    { id: '01.', name: 'Kiwi Coctail', price: '$12', details: 'Granny help you treat yourself with a different meal everyday' },
-    { id: '02.', name: 'Summer Beer', price: '$21', details: 'Etiam tempus felis eros, id lobortis turpis' },
-    { id: '03.', name: 'Red Mojitos', price: '$17', details: 'usce tempus tempus maximus volutpat' },
-    { id: '04.', name: 'Cabernet Sauvignon', price: '$40', details: 'usce tempus tempus maximus volutpat' },
-  ],
-};
+interface FirebaseMenuItem {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+  description: string;
+  available: boolean;
+}
 
 export default function SpecialMenu() {
   const [activeTab, setActiveTab] = useState('tab-1');
+  const [allItems, setAllItems] = useState<FirebaseMenuItem[]>([]);
+
+  useEffect(() => {
+    return onSnapshot(collection(db, 'menuItems'), (snap) => {
+      setAllItems(snap.docs.map(d => ({ id: d.id, ...d.data() } as FirebaseMenuItem)));
+    });
+  }, []);
 
   const currentPrompt = categories.find(c => c.id === activeTab)?.prompt || '';
+
+  const activeCategory = categories.find(c => c.id === activeTab)?.firebaseCategory || '';
+  const currentItems = allItems
+    .filter(item => item.category === activeCategory && item.available);
 
   return (
     <section id="menu" className="relative py-24 overflow-hidden min-h-[800px] flex items-center">
@@ -110,21 +101,25 @@ export default function SpecialMenu() {
                 transition={{ duration: 0.5 }}
                 className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8"
               >
-                {menuItems[activeTab].map((item) => (
-                  <div key={item.id} className="group">
-                    <div className="flex items-center justify-between gap-4 mb-2">
-                      <h6 className="text-white font-serif text-lg flex items-center gap-2">
-                        <span className="text-gold text-xs font-mono">{item.id}</span>
-                        {item.name}
-                      </h6>
-                      <div className="flex-grow border-b border-white/10 border-dotted h-1" />
-                      <span className="text-gold font-mono font-bold">{item.price}</span>
+                {currentItems.length === 0 ? (
+                  <p className="text-white/30 text-sm italic col-span-2">No items available in this category.</p>
+                ) : (
+                  currentItems.map((item, index) => (
+                    <div key={item.id} className="group">
+                      <div className="flex items-center justify-between gap-4 mb-2">
+                        <h6 className="text-white font-serif text-lg flex items-center gap-2">
+                          <span className="text-gold text-xs font-mono">{String(index + 1).padStart(2, '0')}.</span>
+                          {item.name}
+                        </h6>
+                        <div className="flex-grow border-b border-white/10 border-dotted h-1" />
+                        <span className="text-gold font-mono font-bold">${item.price.toFixed(2)}</span>
+                      </div>
+                      <p className="text-white/50 text-sm italic leading-relaxed">
+                        {item.description}
+                      </p>
                     </div>
-                    <p className="text-white/50 text-sm italic leading-relaxed">
-                      {item.details}
-                    </p>
-                  </div>
-                ))}
+                  ))
+                )}
               </motion.div>
             </AnimatePresence>
 

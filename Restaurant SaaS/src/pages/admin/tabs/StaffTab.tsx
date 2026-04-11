@@ -65,6 +65,7 @@ export default function StaffTab() {
   };
 
   const inputCls = "bg-white/5 border border-white/10 px-3 py-2 text-white text-sm focus:outline-none focus:border-gold/50 transition-colors";
+  const selectCls = "bg-zinc-900 border border-white/10 px-3 py-2 text-white text-sm focus:outline-none focus:border-gold/50 transition-colors cursor-pointer [&>option]:bg-zinc-900 [&>option]:text-white";
 
   return (
     <div>
@@ -93,7 +94,7 @@ export default function StaffTab() {
             </div>
             <div>
               <label className="text-white/30 text-[9px] uppercase tracking-widest font-mono block mb-1">Role</label>
-              <select className={inputCls + " w-full cursor-pointer"} value={newRole} onChange={e => setNewRole(e.target.value as Role)}>
+              <select className={selectCls + " w-full"} value={newRole} onChange={e => setNewRole(e.target.value as Role)}>
                 {ROLES.map(r => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
               </select>
             </div>
@@ -137,7 +138,7 @@ export default function StaffTab() {
                 <select
                   value={member.role}
                   onChange={e => changeRole(member.id, e.target.value as Role)}
-                  className="bg-white/5 border border-white/10 px-2 py-1 text-white text-xs font-mono focus:outline-none focus:border-gold/50 cursor-pointer"
+                  className="bg-zinc-900 border border-white/10 px-2 py-1 text-white text-xs font-mono focus:outline-none focus:border-gold/50 cursor-pointer [&>option]:bg-zinc-900 [&>option]:text-white"
                 >
                   {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
