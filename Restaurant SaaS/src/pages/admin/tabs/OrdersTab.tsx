@@ -6,6 +6,7 @@ import { Clock, Flame } from 'lucide-react';
 
 interface Order {
   id: string;
+  receiptNo?: string;
   customerName: string;
   phone: string;
   items: { name: string; qty: number; price: number }[];
@@ -118,10 +119,15 @@ export default function OrdersTab() {
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   {/* Left: status + info */}
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-[10px] uppercase tracking-widest font-mono px-2 py-0.5 border ${STATUS_STYLES[order.status]}`}>
-                        {isJustOrdered ? '🔔 Just Ordered' : order.status}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`text-[10px] uppercase tracking-widest font-mono px-2 py-0.5 border ${STATUS_STYLES[order.status]}`}>
+                      {isJustOrdered ? '🔔 Just Ordered' : order.status}
+                    </span>
+                    {order.receiptNo && (
+                      <span className="text-[10px] uppercase tracking-widest font-mono px-2 py-0.5 border border-white/10 text-white/40">
+                        #{order.receiptNo}
                       </span>
+                    )}
                       {/* Elapsed time — only for active orders */}
                       {isActive && elapsed && (
                         <span className={`flex items-center gap-1 text-[10px] font-mono font-bold uppercase tracking-widest ${

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, doc, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -106,9 +106,22 @@ export default function POSScreen() {
   const changeDue = Math.max(0, cashReceivedNum - total);
   const cashValid = paymentMethod === 'card' || cashReceivedNum >= total;
 
+  const nextReceiptNumber = async () => {
+    const counterRef = doc(db, 'counters', 'receipts');
+    const next = await runTransaction(db, async (tx) => {
+      const snap = await tx.get(counterRef);
+      const current = snap.exists() ? (snap.data().value as number) : 0;
+      const value = current + 1;
+      tx.set(counterRef, { value, updatedAt: serverTimestamp() }, { merge: true });
+      return value;
+    });
+    return next.toString(36).toUpperCase().padStart(5, '0').slice(-5);
+  };
+
   const handleConfirmPayment = async () => {
     setCheckingOut(true);
     try {
+      const receiptNo = await nextReceiptNumber();
       const ref = await addDoc(collection(db, 'orders'), {
         items: cart.map(c => ({ id: c.id, name: c.name, price: c.price, qty: c.qty })),
         subtotal,
@@ -122,11 +135,13 @@ export default function POSScreen() {
         changeDue: paymentMethod === 'cash' ? changeDue : null,
         status: 'pending',
         cashier: user?.displayName ?? user?.email,
+        receiptNo,
         createdAt: serverTimestamp(),
       });
 
       await addDoc(collection(db, 'sales'), {
         orderId: ref.id,
+        receiptNo,
         total,
         subtotal,
         discount: discountAmt,
@@ -145,7 +160,7 @@ export default function POSScreen() {
         discount: discountAmt,
         tax: taxAmt,
         total,
-        orderId: ref.id.slice(-6).toUpperCase(),
+        orderId: receiptNo,
         time: new Date().toLocaleString(),
         note,
         paymentMethod,

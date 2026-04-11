@@ -59,6 +59,12 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    // ─── Counters (receipt sequencing) ─────────────────────────────────────────
+
+    match /counters/{id} {
+      allow read, write: if isStaff();
+    }
+
     // ─── Site Config ───────────────────────────────────────────────────────────
 
     match /siteConfig/{docId} {

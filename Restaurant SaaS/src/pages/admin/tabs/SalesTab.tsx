@@ -8,6 +8,7 @@ import { TrendingUp, ShoppingBag, Receipt, DollarSign } from 'lucide-react';
 
 interface Sale {
   id: string;
+  receiptNo?: string;
   total: number;
   subtotal: number;
   discount: number;
@@ -276,6 +277,9 @@ export default function SalesTab() {
                   <span className="text-white/50 font-mono text-xs">
                     {sale.createdAt ? sale.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
                   </span>
+                  {sale.receiptNo && (
+                    <span className="text-white/30 font-mono text-xs ml-3">#{sale.receiptNo}</span>
+                  )}
                   <span className="text-white/30 font-mono text-xs ml-3">{sale.cashier}</span>
                 </div>
                 <div className="flex items-center gap-4">
