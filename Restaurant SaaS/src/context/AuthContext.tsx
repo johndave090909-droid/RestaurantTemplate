@@ -6,7 +6,7 @@ import {
   GoogleAuthProvider,
   User,
 } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 
 export type Role = 'superAdmin' | 'admin' | 'manager' | 'staff';
@@ -29,10 +29,9 @@ const provider = new GoogleAuthProvider();
 
 async function findUserByEmail(email: string) {
   if (!email) return null;
-  const q = query(collection(db, 'users'), where('email', '==', email));
-  const snap = await getDocs(q);
-  if (snap.empty) return null;
-  return snap.docs[0];
+  const snap = await getDoc(doc(db, 'userEmails', email));
+  if (!snap.exists()) return null;
+  return snap;
 }
 
 async function resolveRole(user: User): Promise<Role> {

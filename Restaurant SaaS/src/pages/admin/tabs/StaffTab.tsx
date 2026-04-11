@@ -36,9 +36,16 @@ export default function StaffTab() {
 
   const addStaff = async () => {
     if (!newEmail.trim() || !newName.trim()) return;
+    const normalizedEmail = newEmail.trim().toLowerCase();
     const id = `invite_${Date.now()}`;
     await setDoc(doc(db, 'users', id), {
-      email: newEmail.trim().toLowerCase(),
+      email: normalizedEmail,
+      displayName: newName.trim(),
+      role: newRole,
+      invited: true,
+    });
+    await setDoc(doc(db, 'userEmails', normalizedEmail), {
+      email: normalizedEmail,
       displayName: newName.trim(),
       role: newRole,
       invited: true,

@@ -49,6 +49,16 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ─── User Emails (invite lookup) ───────────────────────────────────────────
+
+    match /userEmails/{email} {
+      allow read: if isSignedIn() && (
+        request.auth.token.email == email ||
+        isAdmin()
+      );
+      allow create, update, delete: if isAdmin();
+    }
+
     // ─── Site Config ───────────────────────────────────────────────────────────
 
     match /siteConfig/{docId} {
