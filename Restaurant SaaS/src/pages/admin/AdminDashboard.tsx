@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, ShoppingBag, Calendar, UtensilsCrossed, Users, Settings, Menu as MenuIcon, X, MonitorSmartphone, BarChart2, ChefHat, Package } from 'lucide-react';
+import { LogOut, ShoppingBag, Calendar, UtensilsCrossed, Users, Settings, Menu as MenuIcon, X, MonitorSmartphone, BarChart2, ChefHat, Package, FileText } from 'lucide-react';
 import { useAuth, can } from '../../context/AuthContext';
 
 import OrdersTab from './tabs/OrdersTab';
@@ -10,8 +10,9 @@ import StaffTab from './tabs/StaffTab';
 import SiteSettingsTab from './tabs/SiteSettingsTab';
 import SalesTab from './tabs/SalesTab';
 import InventoryTab from './tabs/InventoryTab';
+import InvoiceTab from './tabs/InvoiceTab';
 
-type Tab = 'sales' | 'orders' | 'reservations' | 'menu' | 'inventory' | 'staff' | 'site';
+type Tab = 'sales' | 'orders' | 'reservations' | 'menu' | 'inventory' | 'invoices' | 'staff' | 'site';
 
 export default function AdminDashboard() {
   const { user, role, tabPermissions, logout } = useAuth();
@@ -30,6 +31,7 @@ export default function AdminDashboard() {
     { id: 'reservations' as Tab, label: 'Reservations',  icon: <Calendar size={16} />       },
     { id: 'menu' as Tab,         label: 'Menu & Prices', icon: <UtensilsCrossed size={16} />},
     { id: 'inventory' as Tab,    label: 'Inventory',     icon: <Package size={16} />        },
+    { id: 'invoices' as Tab,     label: 'Invoices',      icon: <FileText size={16} />       },
     { id: 'staff' as Tab,        label: 'Staff',         icon: <Users size={16} />          },
     { id: 'site' as Tab,         label: 'Site Settings', icon: <Settings size={16} />       },
   ]).filter(t => tabPermissions.includes(t.id));
@@ -150,6 +152,7 @@ export default function AdminDashboard() {
           {activeTab === 'reservations' && <ReservationsTab />}
           {activeTab === 'menu' && <MenuTab />}
           {activeTab === 'inventory' && <InventoryTab />}
+          {activeTab === 'invoices' && <InvoiceTab />}
           {activeTab === 'staff' && <StaffTab />}
           {activeTab === 'site' && <SiteSettingsTab />}
         </main>

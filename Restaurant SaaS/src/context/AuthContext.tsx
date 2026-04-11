@@ -22,6 +22,7 @@ export const ALL_TABS = [
   { id: 'reservations', label: 'Reservations'  },
   { id: 'menu',         label: 'Menu & Prices' },
   { id: 'inventory',    label: 'Inventory'     },
+  { id: 'invoices',     label: 'Invoices'      },
   { id: 'staff',        label: 'Staff'         },
   { id: 'site',         label: 'Site Settings' },
 ] as const;
