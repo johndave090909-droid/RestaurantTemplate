@@ -16,9 +16,22 @@ const SUPER_ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS ?? '')
   .map((e: string) => e.trim().toLowerCase())
   .filter(Boolean);
 
+export const ALL_TABS = [
+  { id: 'sales',        label: 'Sales Report'  },
+  { id: 'orders',       label: 'Orders'        },
+  { id: 'reservations', label: 'Reservations'  },
+  { id: 'menu',         label: 'Menu & Prices' },
+  { id: 'inventory',    label: 'Inventory'     },
+  { id: 'staff',        label: 'Staff'         },
+  { id: 'site',         label: 'Site Settings' },
+] as const;
+
+const ALL_TAB_IDS = ALL_TABS.map(t => t.id);
+
 interface AuthContextType {
   user: User | null;
   role: Role | null;
+  tabPermissions: string[];
   loading: boolean;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
@@ -48,9 +61,17 @@ async function resolveRole(user: User): Promise<Role> {
   return 'staff'; // unknown user - no access granted
 }
 
+async function resolveTabPermissions(u: User, role: Role): Promise<string[]> {
+  if (role === 'superAdmin') return [...ALL_TAB_IDS];
+  const snap = await getDoc(doc(db, 'users', u.uid));
+  if (snap.exists()) return (snap.data().tabPermissions as string[]) ?? [];
+  return [];
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<Role | null>(null);
+  const [tabPermissions, setTabPermissions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -59,8 +80,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (u) {
         const r = await resolveRole(u);
         setRole(r);
+        const perms = await resolveTabPermissions(u, r);
+        setTabPermissions(perms);
       } else {
         setRole(null);
+        setTabPermissions([]);
       }
       setLoading(false);
     });
@@ -110,7 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, role, loading, loginWithGoogle, logout }}>
+    <AuthContext.Provider value={{ user, role, tabPermissions, loading, loginWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );

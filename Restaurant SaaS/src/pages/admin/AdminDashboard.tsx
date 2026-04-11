@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogOut, ShoppingBag, Calendar, UtensilsCrossed, Users, Settings, Menu as MenuIcon, X, MonitorSmartphone, BarChart2, ChefHat, Package } from 'lucide-react';
 import { useAuth, can } from '../../context/AuthContext';
+
 import OrdersTab from './tabs/OrdersTab';
 import ReservationsTab from './tabs/ReservationsTab';
 import MenuTab from './tabs/MenuTab';
@@ -13,7 +14,7 @@ import InventoryTab from './tabs/InventoryTab';
 type Tab = 'sales' | 'orders' | 'reservations' | 'menu' | 'inventory' | 'staff' | 'site';
 
 export default function AdminDashboard() {
-  const { user, role, logout } = useAuth();
+  const { user, role, tabPermissions, logout } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>('sales');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -24,14 +25,14 @@ export default function AdminDashboard() {
   };
 
   const tabs = ([
-    { id: 'sales' as Tab, label: 'Sales Report', icon: <BarChart2 size={16} />, show: can.manageMenu(role) },
-    { id: 'orders' as Tab, label: 'Orders', icon: <ShoppingBag size={16} />, show: can.viewOrders(role) },
-    { id: 'reservations' as Tab, label: 'Reservations', icon: <Calendar size={16} />, show: can.viewReservations(role) },
-    { id: 'menu' as Tab, label: 'Menu & Prices', icon: <UtensilsCrossed size={16} />, show: can.manageMenu(role) },
-    { id: 'inventory' as Tab, label: 'Inventory', icon: <Package size={16} />, show: can.viewInventory(role) },
-    { id: 'staff' as Tab, label: 'Staff', icon: <Users size={16} />, show: can.manageStaff(role) },
-    { id: 'site' as Tab, label: 'Site Settings', icon: <Settings size={16} />, show: can.manageSite(role) },
-  ]).filter(t => t.show);
+    { id: 'sales' as Tab,        label: 'Sales Report',  icon: <BarChart2 size={16} />      },
+    { id: 'orders' as Tab,       label: 'Orders',        icon: <ShoppingBag size={16} />    },
+    { id: 'reservations' as Tab, label: 'Reservations',  icon: <Calendar size={16} />       },
+    { id: 'menu' as Tab,         label: 'Menu & Prices', icon: <UtensilsCrossed size={16} />},
+    { id: 'inventory' as Tab,    label: 'Inventory',     icon: <Package size={16} />        },
+    { id: 'staff' as Tab,        label: 'Staff',         icon: <Users size={16} />          },
+    { id: 'site' as Tab,         label: 'Site Settings', icon: <Settings size={16} />       },
+  ]).filter(t => tabPermissions.includes(t.id));
 
   const ROLE_BADGE: Record<string, string> = {
     superAdmin: 'bg-gold/10 text-gold border-gold/20',

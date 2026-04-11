@@ -106,6 +106,27 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ─── Inventory Items ───────────────────────────────────────────────────────
+
+    match /inventoryItems/{itemId} {
+      allow read: if isStaff();
+      allow create, update, delete: if isManager();
+    }
+
+    // ─── Suppliers / Vendors ──────────────────────────────────────────────────
+
+    match /suppliers/{supplierId} {
+      allow read: if isStaff();
+      allow create, update, delete: if isManager();
+    }
+
+    // ─── Inventory Settings (custom categories/units) ──────────────────────────
+
+    match /inventorySettings/{docId} {
+      allow read: if isStaff();
+      allow write: if isManager();
+    }
+
     // ─── Deny everything else ──────────────────────────────────────────────────
 
     match /{document=**} {

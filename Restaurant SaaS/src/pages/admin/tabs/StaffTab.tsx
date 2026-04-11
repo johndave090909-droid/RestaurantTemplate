@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { collection, onSnapshot, doc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
-import { useAuth, Role } from '../../../context/AuthContext';
-import { UserPlus, Trash2, Shield } from 'lucide-react';
+import { useAuth, Role, ALL_TABS } from '../../../context/AuthContext';
+import { UserPlus, Trash2, Shield, ChevronDown } from 'lucide-react';
 
 interface StaffUser {
   id: string;
@@ -10,6 +10,7 @@ interface StaffUser {
   displayName: string;
   role: Role;
   photoURL?: string;
+  tabPermissions?: string[];
 }
 
 const ROLES: Role[] = ['admin', 'manager', 'staff'];
@@ -27,6 +28,7 @@ export default function StaffTab() {
   const [newName, setNewName] = useState('');
   const [newRole, setNewRole] = useState<Role>('staff');
   const [adding, setAdding] = useState(false);
+  const [permissionsOpenId, setPermissionsOpenId] = useState<string | null>(null);
 
   useEffect(() => {
     return onSnapshot(collection(db, 'users'), (snap) => {
@@ -43,6 +45,7 @@ export default function StaffTab() {
       displayName: newName.trim(),
       role: newRole,
       invited: true,
+      tabPermissions: [],
     });
     await setDoc(doc(db, 'userEmails', normalizedEmail), {
       email: normalizedEmail,
@@ -58,6 +61,22 @@ export default function StaffTab() {
 
   const changeRole = async (id: string, role: Role) => {
     await updateDoc(doc(db, 'users', id), { role });
+  };
+
+  const toggleTabPermission = async (member: StaffUser, tabId: string) => {
+    const current = member.tabPermissions ?? [];
+    const updated = current.includes(tabId)
+      ? current.filter(t => t !== tabId)
+      : [...current, tabId];
+    await updateDoc(doc(db, 'users', member.id), { tabPermissions: updated });
+  };
+
+  const grantAll = async (member: StaffUser) => {
+    await updateDoc(doc(db, 'users', member.id), { tabPermissions: ALL_TABS.map(t => t.id) });
+  };
+
+  const revokeAll = async (member: StaffUser) => {
+    await updateDoc(doc(db, 'users', member.id), { tabPermissions: [] });
   };
 
   const remove = async (id: string) => {
@@ -117,40 +136,114 @@ export default function StaffTab() {
       </div>
 
       <div className="space-y-2">
-        {staff.map(member => (
-          <div key={member.id} className="flex items-center justify-between gap-4 bg-white/3 border border-white/10 p-4 flex-wrap">
-            <div className="flex items-center gap-3">
-              {member.photoURL
-                ? <img src={member.photoURL} className="w-8 h-8 rounded-full" alt="" />
-                : <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/40 text-xs font-bold">{member.displayName?.[0] ?? '?'}</div>
-              }
-              <div>
-                <p className="text-white text-sm font-medium">{member.displayName || '—'}</p>
-                <p className="text-white/30 text-xs font-mono">{member.email}</p>
+        {staff.map(member => {
+          const isSelf = member.id === currentUser?.uid;
+          const isSuperAdmin = member.role === 'superAdmin';
+          const perms = member.tabPermissions ?? [];
+          const permissionsOpen = permissionsOpenId === member.id;
+
+          return (
+            <div key={member.id} className="border border-white/10 bg-white/3">
+              {/* Main row */}
+              <div className="flex items-center justify-between gap-4 p-4 flex-wrap">
+                <div className="flex items-center gap-3">
+                  {member.photoURL
+                    ? <img src={member.photoURL} className="w-8 h-8 rounded-full" alt="" />
+                    : <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/40 text-xs font-bold">{member.displayName?.[0] ?? '?'}</div>
+                  }
+                  <div>
+                    <p className="text-white text-sm font-medium">{member.displayName || '—'}</p>
+                    <p className="text-white/30 text-xs font-mono">{member.email}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Role badge / selector */}
+                  {isSuperAdmin || isSelf ? (
+                    <span className={`text-[10px] uppercase tracking-widest font-mono px-2 py-1 border ${ROLE_COLORS[member.role]}`}>
+                      {member.role}
+                    </span>
+                  ) : (
+                    <select
+                      value={member.role}
+                      onChange={e => changeRole(member.id, e.target.value as Role)}
+                      className="bg-zinc-900 border border-white/10 px-2 py-1 text-white text-xs font-mono focus:outline-none focus:border-gold/50 cursor-pointer [&>option]:bg-zinc-900 [&>option]:text-white"
+                    >
+                      {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  )}
+
+                  {/* Tab permissions toggle (superAdmin only, not for self or other superAdmins) */}
+                  {currentRole === 'superAdmin' && !isSuperAdmin && !isSelf && (
+                    <button
+                      onClick={() => setPermissionsOpenId(permissionsOpen ? null : member.id)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border transition-all ${
+                        permissionsOpen
+                          ? 'bg-gold border-gold text-white'
+                          : 'border-white/10 text-white/40 hover:border-gold/50 hover:text-gold'
+                      }`}
+                    >
+                      <Shield size={11} /> Tab Access
+                      <ChevronDown size={11} className={`transition-transform ${permissionsOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                  )}
+
+                  {!isSuperAdmin && !isSelf && (
+                    <button onClick={() => remove(member.id)} className="p-1.5 text-white/20 hover:text-red-400 transition-colors">
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {member.role === 'superAdmin' || member.id === currentUser?.uid ? (
-                <span className={`text-[10px] uppercase tracking-widest font-mono px-2 py-1 border ${ROLE_COLORS[member.role]}`}>
-                  {member.role}
-                </span>
-              ) : (
-                <select
-                  value={member.role}
-                  onChange={e => changeRole(member.id, e.target.value as Role)}
-                  className="bg-zinc-900 border border-white/10 px-2 py-1 text-white text-xs font-mono focus:outline-none focus:border-gold/50 cursor-pointer [&>option]:bg-zinc-900 [&>option]:text-white"
-                >
-                  {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
+
+              {/* Tab permissions panel */}
+              {permissionsOpen && currentRole === 'superAdmin' && !isSuperAdmin && (
+                <div className="border-t border-white/10 px-4 py-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-gold text-[10px] uppercase tracking-widest font-mono">Tab Access for {member.displayName || member.email}</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => grantAll(member)}
+                        className="text-[9px] uppercase tracking-widest font-mono px-2 py-1 border border-green-500/30 text-green-400 hover:bg-green-500/10 transition-colors"
+                      >
+                        Grant All
+                      </button>
+                      <button
+                        onClick={() => revokeAll(member)}
+                        className="text-[9px] uppercase tracking-widest font-mono px-2 py-1 border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
+                      >
+                        Revoke All
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                    {ALL_TABS.map(tab => {
+                      const granted = perms.includes(tab.id);
+                      return (
+                        <button
+                          key={tab.id}
+                          onClick={() => toggleTabPermission(member, tab.id)}
+                          className={`flex items-center gap-2 px-3 py-2 border text-xs font-mono transition-all text-left ${
+                            granted
+                              ? 'bg-green-500/10 border-green-500/30 text-green-400'
+                              : 'bg-white/3 border-white/10 text-white/30 hover:border-white/30'
+                          }`}
+                        >
+                          <span className={`w-3 h-3 border flex items-center justify-center shrink-0 ${
+                            granted ? 'border-green-400 bg-green-400' : 'border-white/20'
+                          }`}>
+                            {granted && <span className="text-black text-[8px] font-bold leading-none">✓</span>}
+                          </span>
+                          {tab.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
-              {member.role !== 'superAdmin' && member.id !== currentUser?.uid && (
-                <button onClick={() => remove(member.id)} className="p-1.5 text-white/20 hover:text-red-400 transition-colors">
-                  <Trash2 size={13} />
-                </button>
-              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

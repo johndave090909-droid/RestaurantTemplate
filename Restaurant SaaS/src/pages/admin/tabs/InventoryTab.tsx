@@ -7,6 +7,7 @@ import { db } from '../../../lib/firebase';
 import {
   Plus, Pencil, Trash2, Check, X, Package, AlertTriangle, TrendingDown,
   Settings2, ClipboardList, ArrowLeftRight, Bell, BarChart2, RefreshCw, Printer,
+  Truck, Phone, Mail, MapPin, Globe, User,
 } from 'lucide-react';
 import { useAuth, can } from '../../../context/AuthContext';
 import SeedInventoryButton from './SeedInventoryButton';
@@ -28,7 +29,22 @@ const BASE_CATEGORIES = ['Produce', 'Dairy', 'Meat & Poultry', 'Seafood', 'Pantr
 const BASE_UNITS = ['kg', 'g', 'L', 'mL', 'pcs', 'boxes', 'bottles', 'cans'];
 const STATUS_FILTERS = ['All', 'In Stock', 'Low Stock', 'Out of Stock'];
 
-type PanelMode = 'customize' | 'count' | 'convert' | 'remind' | 'report' | 'update' | null;
+type PanelMode = 'customize' | 'count' | 'convert' | 'remind' | 'report' | 'update' | 'suppliers' | null;
+
+interface Supplier {
+  id: string;
+  name: string;
+  contact: string;
+  phone: string;
+  email: string;
+  address: string;
+  website: string;
+  notes: string;
+}
+
+const emptySupplier = (): Omit<Supplier, 'id'> => ({
+  name: '', contact: '', phone: '', email: '', address: '', website: '', notes: '',
+});
 
 // Supported conversions (factor = how many [toUnit] per 1 [fromUnit])
 const CONVERSION: Record<string, Record<string, number>> = {
@@ -49,6 +65,15 @@ const STATUS_BADGE: Record<string, string> = {
   'Low Stock':    'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
   'Out of Stock': 'bg-red-500/10 text-red-400 border-red-500/20',
 };
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="text-white/30 text-[9px] uppercase tracking-widest font-mono block mb-1">{label}</label>
+      {children}
+    </div>
+  );
+}
 
 const emptyForm = (): Omit<InventoryItem, 'id'> => ({
   name: '', category: 'Produce', quantity: 0, unit: 'kg',
@@ -89,6 +114,13 @@ export default function InventoryTab() {
   const [updateInputs, setUpdateInputs] = useState<Record<string, string>>({});
   const [updateSaving, setUpdateSaving] = useState(false);
 
+  // Suppliers
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [supplierForm, setSupplierForm] = useState(emptySupplier());
+  const [supplierEditId, setSupplierEditId] = useState<string | null>(null);
+  const [addingSupplier, setAddingSupplier] = useState(false);
+  const [expandedSupplierId, setExpandedSupplierId] = useState<string | null>(null);
+
   const CATEGORIES = [...BASE_CATEGORIES, ...customCategories];
   const UNITS = [...BASE_UNITS, ...customUnits];
 
@@ -97,6 +129,13 @@ export default function InventoryTab() {
     const q = query(collection(db, 'inventoryItems'), orderBy('name'));
     return onSnapshot(q, snap => {
       setItems(snap.docs.map(d => ({ id: d.id, ...d.data() } as InventoryItem)));
+    });
+  }, []);
+
+  useEffect(() => {
+    const q = query(collection(db, 'suppliers'), orderBy('name'));
+    return onSnapshot(q, snap => {
+      setSuppliers(snap.docs.map(d => ({ id: d.id, ...d.data() } as Supplier)));
     });
   }, []);
 
@@ -156,6 +195,29 @@ export default function InventoryTab() {
     const next = Math.max(0, item.quantity + delta);
     await updateDoc(doc(db, 'inventoryItems', item.id), { quantity: next, updatedAt: serverTimestamp() });
   };
+
+  // ── Suppliers ────────────────────────────────────────
+  const saveSupplier = async () => {
+    if (!supplierForm.name.trim()) return;
+    if (supplierEditId) {
+      await updateDoc(doc(db, 'suppliers', supplierEditId), { ...supplierForm, updatedAt: serverTimestamp() });
+      setSupplierEditId(null);
+    } else {
+      await addDoc(collection(db, 'suppliers'), { ...supplierForm, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      setAddingSupplier(false);
+    }
+    setSupplierForm(emptySupplier());
+  };
+  const removeSupplier = async (id: string) => {
+    if (confirm('Delete this supplier?')) await deleteDoc(doc(db, 'suppliers', id));
+  };
+  const startEditSupplier = (s: Supplier) => {
+    setSupplierEditId(s.id);
+    setSupplierForm({ name: s.name, contact: s.contact, phone: s.phone, email: s.email, address: s.address, website: s.website, notes: s.notes });
+    setAddingSupplier(false);
+    setExpandedSupplierId(null);
+  };
+  const cancelSupplier = () => { setSupplierEditId(null); setAddingSupplier(false); setSupplierForm(emptySupplier()); };
 
   // ── Customize ─────────────────────────────────────────
   const saveSettings = async (cats: string[], units: string[]) =>
@@ -264,12 +326,6 @@ export default function InventoryTab() {
   // ── Styles ────────────────────────────────────────────
   const inputCls  = "w-full bg-white/5 border border-white/10 px-3 py-2 text-white text-sm focus:outline-none focus:border-gold/50 transition-colors";
   const selectCls = "w-full bg-zinc-900 border border-white/10 px-3 py-2 text-white text-sm focus:outline-none focus:border-gold/50 transition-colors cursor-pointer [&>option]:bg-zinc-900 [&>option]:text-white";
-  const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div>
-      <label className="text-white/30 text-[9px] uppercase tracking-widest font-mono block mb-1">{label}</label>
-      {children}
-    </div>
-  );
 
   const PANEL_BUTTONS: { id: PanelMode; label: string; icon: React.ReactNode }[] = [
     { id: 'customize', label: 'Customize',  icon: <Settings2 size={13} />     },
@@ -278,6 +334,7 @@ export default function InventoryTab() {
     { id: 'remind',    label: 'Remind',     icon: <Bell size={13} />          },
     { id: 'report',    label: 'Report',     icon: <BarChart2 size={13} />     },
     { id: 'update',    label: 'Update',     icon: <RefreshCw size={13} />     },
+    { id: 'suppliers', label: 'Suppliers',  icon: <Truck size={13} />         },
   ];
 
   // ─────────────────────────────────────────────────────
@@ -704,6 +761,191 @@ export default function InventoryTab() {
         </div>
       )}
 
+      {/* ════════════════════════════════════════════════════
+          SUPPLIERS PANEL
+      ════════════════════════════════════════════════════ */}
+      {activePanel === 'suppliers' && (
+        <div className="bg-white/3 border border-gold/30 p-5 mb-6">
+          <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
+            <div>
+              <p className="text-gold text-[10px] uppercase tracking-widest font-mono">Suppliers & Vendors</p>
+              <p className="text-white/30 text-xs mt-0.5">{suppliers.length} supplier{suppliers.length !== 1 ? 's' : ''} on record</p>
+            </div>
+            {canManage && !addingSupplier && !supplierEditId && (
+              <button
+                onClick={() => { setAddingSupplier(true); setSupplierForm(emptySupplier()); }}
+                className="flex items-center gap-2 bg-gold hover:bg-gold/80 text-white px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all"
+              >
+                <Plus size={14} /> Add Supplier
+              </button>
+            )}
+          </div>
+
+          {/* Add form */}
+          {addingSupplier && canManage && (
+            <div className="bg-white/3 border border-gold/20 p-4 mb-4 space-y-3">
+              <p className="text-gold text-[10px] uppercase tracking-widest font-mono mb-2">New Supplier</p>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Company Name *">
+                  <input className={inputCls} value={supplierForm.name} onChange={e => setSupplierForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Ocean Fresh Co." />
+                </Field>
+                <Field label="Contact Person">
+                  <input className={inputCls} value={supplierForm.contact} onChange={e => setSupplierForm(p => ({ ...p, contact: e.target.value }))} placeholder="e.g. John Smith" />
+                </Field>
+                <Field label="Phone">
+                  <input className={inputCls} value={supplierForm.phone} onChange={e => setSupplierForm(p => ({ ...p, phone: e.target.value }))} placeholder="+1 (555) 000-0000" />
+                </Field>
+                <Field label="Email">
+                  <input type="email" className={inputCls} value={supplierForm.email} onChange={e => setSupplierForm(p => ({ ...p, email: e.target.value }))} placeholder="orders@supplier.com" />
+                </Field>
+                <Field label="Website">
+                  <input className={inputCls} value={supplierForm.website} onChange={e => setSupplierForm(p => ({ ...p, website: e.target.value }))} placeholder="https://supplier.com" />
+                </Field>
+                <Field label="Address">
+                  <input className={inputCls} value={supplierForm.address} onChange={e => setSupplierForm(p => ({ ...p, address: e.target.value }))} placeholder="123 Market St, City" />
+                </Field>
+              </div>
+              <Field label="Notes">
+                <input className={inputCls} value={supplierForm.notes} onChange={e => setSupplierForm(p => ({ ...p, notes: e.target.value }))} placeholder="Payment terms, delivery schedule, etc." />
+              </Field>
+              <div className="flex gap-2 pt-1">
+                <button onClick={saveSupplier} className="flex items-center gap-2 bg-gold text-white px-4 py-2 text-xs font-bold uppercase tracking-widest"><Check size={13} /> Save</button>
+                <button onClick={cancelSupplier} className="flex items-center gap-2 border border-white/10 text-white/40 px-4 py-2 text-xs font-bold uppercase tracking-widest hover:text-white"><X size={13} /> Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {/* Supplier list */}
+          {suppliers.length === 0 && !addingSupplier ? (
+            <div className="text-center py-10 text-white/20 font-mono text-sm">No suppliers yet. Add one above.</div>
+          ) : (
+            <div className="space-y-2">
+              {suppliers.map(s => (
+                <div key={s.id}>
+                  {supplierEditId === s.id && canManage ? (
+                    <div className="bg-white/3 border border-gold/20 p-4 space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label="Company Name *">
+                          <input className={inputCls} value={supplierForm.name} onChange={e => setSupplierForm(p => ({ ...p, name: e.target.value }))} />
+                        </Field>
+                        <Field label="Contact Person">
+                          <input className={inputCls} value={supplierForm.contact} onChange={e => setSupplierForm(p => ({ ...p, contact: e.target.value }))} />
+                        </Field>
+                        <Field label="Phone">
+                          <input className={inputCls} value={supplierForm.phone} onChange={e => setSupplierForm(p => ({ ...p, phone: e.target.value }))} />
+                        </Field>
+                        <Field label="Email">
+                          <input type="email" className={inputCls} value={supplierForm.email} onChange={e => setSupplierForm(p => ({ ...p, email: e.target.value }))} />
+                        </Field>
+                        <Field label="Website">
+                          <input className={inputCls} value={supplierForm.website} onChange={e => setSupplierForm(p => ({ ...p, website: e.target.value }))} />
+                        </Field>
+                        <Field label="Address">
+                          <input className={inputCls} value={supplierForm.address} onChange={e => setSupplierForm(p => ({ ...p, address: e.target.value }))} />
+                        </Field>
+                      </div>
+                      <Field label="Notes">
+                        <input className={inputCls} value={supplierForm.notes} onChange={e => setSupplierForm(p => ({ ...p, notes: e.target.value }))} />
+                      </Field>
+                      <div className="flex gap-2">
+                        <button onClick={saveSupplier} className="flex items-center gap-2 bg-gold text-white px-3 py-1.5 text-xs font-bold uppercase tracking-widest"><Check size={12} /> Save</button>
+                        <button onClick={cancelSupplier} className="flex items-center gap-2 border border-white/10 text-white/40 px-3 py-1.5 text-xs font-bold uppercase tracking-widest hover:text-white"><X size={12} /> Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="border border-white/10 bg-white/3">
+                      {/* Collapsed row */}
+                      <button
+                        onClick={() => setExpandedSupplierId(prev => prev === s.id ? null : s.id)}
+                        className="w-full flex items-center gap-4 p-4 text-left"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-gold/10 border border-gold/20 flex items-center justify-center shrink-0">
+                          <Truck size={14} className="text-gold" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-sm font-medium">{s.name}</p>
+                          {s.contact && (
+                            <p className="text-white/30 text-xs mt-0.5 flex items-center gap-1">
+                              <User size={10} /> {s.contact}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          {s.phone && <span className="text-white/30 text-xs font-mono hidden sm:block">{s.phone}</span>}
+                          {/* Items supplied count */}
+                          {(() => {
+                            const count = items.filter(i => i.supplier === s.name).length;
+                            return count > 0 ? (
+                              <span className="text-[9px] uppercase tracking-widest font-mono px-1.5 py-0.5 border border-gold/20 text-gold/60">{count} item{count !== 1 ? 's' : ''}</span>
+                            ) : null;
+                          })()}
+                          <span className={`text-white/30 transition-transform ${expandedSupplierId === s.id ? 'rotate-90' : ''}`}>›</span>
+                        </div>
+                      </button>
+
+                      {/* Expanded details */}
+                      {expandedSupplierId === s.id && (
+                        <div className="px-4 pb-4 border-t border-white/5">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                            {s.phone && (
+                              <a href={`tel:${s.phone}`} className="flex items-center gap-2 text-white/50 hover:text-white text-xs transition-colors">
+                                <Phone size={12} className="text-gold/60 shrink-0" /> {s.phone}
+                              </a>
+                            )}
+                            {s.email && (
+                              <a href={`mailto:${s.email}`} className="flex items-center gap-2 text-white/50 hover:text-white text-xs transition-colors">
+                                <Mail size={12} className="text-gold/60 shrink-0" /> {s.email}
+                              </a>
+                            )}
+                            {s.website && (
+                              <a href={s.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-white/50 hover:text-white text-xs transition-colors">
+                                <Globe size={12} className="text-gold/60 shrink-0" /> {s.website}
+                              </a>
+                            )}
+                            {s.address && (
+                              <p className="flex items-start gap-2 text-white/50 text-xs">
+                                <MapPin size={12} className="text-gold/60 shrink-0 mt-0.5" /> {s.address}
+                              </p>
+                            )}
+                          </div>
+                          {s.notes && (
+                            <p className="text-white/30 text-xs italic mt-3 border-t border-white/5 pt-3">{s.notes}</p>
+                          )}
+                          {/* Items from this supplier */}
+                          {(() => {
+                            const suppliedItems = items.filter(i => i.supplier === s.name);
+                            return suppliedItems.length > 0 ? (
+                              <div className="mt-3 border-t border-white/5 pt-3">
+                                <p className="text-white/20 text-[9px] uppercase tracking-widest font-mono mb-2">Items from this supplier</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {suppliedItems.map(i => (
+                                    <span key={i.id} className={`text-[9px] uppercase tracking-widest font-mono px-1.5 py-0.5 border ${STATUS_BADGE[stockStatus(i)]}`}>{i.name}</span>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null;
+                          })()}
+                          {canManage && (
+                            <div className="flex gap-2 mt-3 pt-3 border-t border-white/5">
+                              <button onClick={() => startEditSupplier(s)} className="flex items-center gap-1.5 text-white/30 hover:text-gold text-xs transition-colors">
+                                <Pencil size={12} /> Edit
+                              </button>
+                              <button onClick={() => removeSupplier(s.id)} className="flex items-center gap-1.5 text-white/30 hover:text-red-400 text-xs transition-colors ml-2">
+                                <Trash2 size={12} /> Delete
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Filters ── */}
       <div className="space-y-2 mb-6">
         <div className="flex gap-2 flex-wrap">
@@ -762,7 +1004,10 @@ export default function InventoryTab() {
             </Field>
           </div>
           <Field label="Supplier">
-            <input className={inputCls} value={form.supplier} onChange={e => setForm(p => ({ ...p, supplier: e.target.value }))} placeholder="Supplier name (optional)" />
+            <select className={selectCls} value={form.supplier} onChange={e => setForm(p => ({ ...p, supplier: e.target.value }))}>
+              <option value="">— None —</option>
+              {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+            </select>
           </Field>
           <Field label="Notes">
             <input className={inputCls} value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} placeholder="Optional notes" />
@@ -812,7 +1057,10 @@ export default function InventoryTab() {
                         </Field>
                       </div>
                       <Field label="Supplier">
-                        <input className={inputCls} value={form.supplier} onChange={e => setForm(p => ({ ...p, supplier: e.target.value }))} />
+                        <select className={selectCls} value={form.supplier} onChange={e => setForm(p => ({ ...p, supplier: e.target.value }))}>
+                          <option value="">— None —</option>
+                          {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                        </select>
                       </Field>
                       <Field label="Notes">
                         <input className={inputCls} value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
