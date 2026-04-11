@@ -91,7 +91,8 @@ service cloud.firestore {
     // ─── Orders ────────────────────────────────────────────────────────────────
 
     match /orders/{orderId} {
-      allow create: if isStaff();
+      // Allow unauthenticated create for online orders from public website
+      allow create: if true;
       allow read: if isStaff();
       // Staff can update status (needed for kitchen display)
       allow update: if isStaff();

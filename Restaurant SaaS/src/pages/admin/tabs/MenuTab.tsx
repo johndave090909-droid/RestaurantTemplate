@@ -19,6 +19,15 @@ const empty = (): Omit<MenuItem, 'id'> => ({
   name: '', category: 'Mains', price: 0, description: '', available: true,
 });
 
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="text-white/30 text-[9px] uppercase tracking-widest font-mono block mb-1">{label}</label>
+      {children}
+    </div>
+  );
+}
+
 export default function MenuTab() {
   const [items, setItems] = useState<MenuItem[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
@@ -62,13 +71,6 @@ export default function MenuTab() {
     if (g.length) acc[cat] = g;
     return acc;
   }, {} as Record<string, MenuItem[]>);
-
-  const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div>
-      <label className="text-white/30 text-[9px] uppercase tracking-widest font-mono block mb-1">{label}</label>
-      {children}
-    </div>
-  );
 
   const inputCls = "w-full bg-white/5 border border-white/10 px-3 py-2 text-white text-sm focus:outline-none focus:border-gold/50 transition-colors";
   const selectCls = "w-full bg-zinc-900 border border-white/10 px-3 py-2 text-white text-sm focus:outline-none focus:border-gold/50 transition-colors cursor-pointer [&>option]:bg-zinc-900 [&>option]:text-white";

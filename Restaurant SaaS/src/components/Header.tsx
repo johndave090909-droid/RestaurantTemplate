@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Phone, Mail, Globe, ShoppingBag, Bookmark, Share2, Menu as MenuIcon, X, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
+import { useCart } from '@/src/context/CartContext';
 
 interface HeaderProps {
   onOpenReservation: () => void;
@@ -11,6 +12,7 @@ interface HeaderProps {
 export default function Header({ onOpenReservation, onOpenCart }: HeaderProps) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { count } = useCart();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -114,7 +116,9 @@ export default function Header({ onOpenReservation, onOpenCart }: HeaderProps) {
                 className="p-2 text-gray-600 hover:text-gold transition-colors relative group"
               >
                 <ShoppingBag size={20} />
-                <span className="absolute -top-1 -right-1 bg-gold text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold">3</span>
+                {count > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-gold text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold">{count}</span>
+                )}
                 <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-dark text-white text-[10px] px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Your Cart</span>
               </button>
             </div>

@@ -19,6 +19,9 @@ interface Order {
   cashier: string;
   createdAt: Timestamp | null;
   total: number;
+  source?: string;
+  customerName?: string;
+  customerPhone?: string;
 }
 
 const STATUS_CONFIG = {
@@ -196,10 +199,15 @@ export default function KitchenDisplay() {
                 >
                   {/* Card header */}
                   <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className={`text-[10px] uppercase tracking-widest font-bold px-2 py-0.5 ${cfg.badge}`}>
                         {cfg.label}
                       </span>
+                      {order.source === 'online' && (
+                        <span className="text-[9px] uppercase tracking-widest font-bold px-2 py-0.5 bg-purple-500 text-white animate-pulse">
+                          Online
+                        </span>
+                      )}
                       {isUrgent && <Flame size={13} className="text-red-400 animate-pulse" />}
                     </div>
                     <div className="flex items-center gap-1 text-white/30 font-mono text-xs">
@@ -231,7 +239,12 @@ export default function KitchenDisplay() {
 
                   {/* Footer info */}
                   <div className="px-4 py-2 border-t border-white/10 flex items-center justify-between">
-                    <span className="text-white/20 font-mono text-[10px]">{order.cashier}</span>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-white/20 font-mono text-[10px]">{order.cashier}</span>
+                      {order.source === 'online' && order.customerName && (
+                        <span className="text-purple-400/70 font-mono text-[10px]">{order.customerName}</span>
+                      )}
+                    </div>
                     <span className="text-white/20 font-mono text-[10px]">
                       {order.createdAt ? order.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                     </span>

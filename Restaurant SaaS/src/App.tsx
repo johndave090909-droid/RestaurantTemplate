@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SiteConfigProvider } from './context/SiteConfigContext';
+import { CartProvider } from './context/CartContext';
 
 // Public site
 import Header from './components/Header';
@@ -65,6 +66,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <CartProvider>
         <SiteConfigProvider>
           <Routes>
             <Route path="/" element={<PublicSite />} />
@@ -96,6 +98,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </SiteConfigProvider>
+        </CartProvider>
       </AuthProvider>
     </BrowserRouter>
   );

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowRight, Download } from 'lucide-react';
+import { ArrowRight, Download, ShoppingBag, Check } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import GeneratedImage from './GeneratedImage';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
+import { useCart } from '@/src/context/CartContext';
 
 const categories = [
   { id: 'tab-1', firebaseCategory: 'Mains', name: 'Main Dishes', num: '01.', prompt: 'Gourmet main course dish, steak or roasted meat, high-end plating' },
@@ -26,6 +27,14 @@ interface FirebaseMenuItem {
 export default function SpecialMenu() {
   const [activeTab, setActiveTab] = useState('tab-1');
   const [allItems, setAllItems] = useState<FirebaseMenuItem[]>([]);
+  const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
+  const { addItem } = useCart();
+
+  const handleAddToCart = (item: FirebaseMenuItem) => {
+    addItem({ id: item.id, name: item.name, price: item.price });
+    setAddedIds(prev => new Set(prev).add(item.id));
+    setTimeout(() => setAddedIds(prev => { const s = new Set(prev); s.delete(item.id); return s; }), 1500);
+  };
 
   useEffect(() => {
     return onSnapshot(collection(db, 'menuItems'), (snap) => {
@@ -114,9 +123,23 @@ export default function SpecialMenu() {
                         <div className="flex-grow border-b border-white/10 border-dotted h-1" />
                         <span className="text-gold font-mono font-bold">${item.price.toFixed(2)}</span>
                       </div>
-                      <p className="text-white/50 text-sm italic leading-relaxed">
-                        {item.description}
-                      </p>
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-white/50 text-sm italic leading-relaxed flex-1">
+                          {item.description}
+                        </p>
+                        <button
+                          onClick={() => handleAddToCart(item)}
+                          className={cn(
+                            "shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border transition-all",
+                            addedIds.has(item.id)
+                              ? "border-green-400/50 text-green-400 bg-green-400/10"
+                              : "border-gold/40 text-gold hover:bg-gold hover:text-white"
+                          )}
+                        >
+                          {addedIds.has(item.id) ? <Check size={11} /> : <ShoppingBag size={11} />}
+                          {addedIds.has(item.id) ? 'Added' : 'Add'}
+                        </button>
+                      </div>
                     </div>
                   ))
                 )}
