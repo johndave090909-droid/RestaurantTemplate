@@ -5,7 +5,7 @@ import { db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
 import {
   Plus, Minus, Trash2, LogOut, ShoppingBag,
-  Printer, Check, X, LayoutGrid, Banknote, CreditCard, ArrowLeft
+  Printer, Check, X, LayoutGrid, Banknote, CreditCard, ArrowLeft, QrCode,
 } from 'lucide-react';
 
 interface MenuItem {
@@ -21,9 +21,15 @@ interface CartItem extends MenuItem {
   qty: number;
 }
 
-const CATEGORIES = ['All', 'Starters', 'Mains', 'Desserts', 'Drinks', 'Specials'];
+interface DigitalMethod {
+  id: string;
+  name: string;
+  qrUrl: string;
+  storagePath?: string;
+}
 
-const TAX_RATE = 0.1; // 10% — adjust as needed
+const CATEGORIES = ['All', 'Starters', 'Mains', 'Desserts', 'Drinks', 'Specials'];
+const TAX_RATE = 0.1;
 
 export default function POSScreen() {
   const { user, logout } = useAuth();
@@ -38,8 +44,11 @@ export default function POSScreen() {
   const [note, setNote] = useState('');
   const [checkingOut, setCheckingOut] = useState(false);
   const [paymentModal, setPaymentModal] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'digital'>('cash');
   const [cashReceived, setCashReceived] = useState('');
+  const [digitalMethods, setDigitalMethods] = useState<DigitalMethod[]>([]);
+  const [selectedDigital, setSelectedDigital] = useState<DigitalMethod | null>(null);
+  const [qrModal, setQrModal] = useState(false);
   const [receipt, setReceipt] = useState<null | {
     items: CartItem[];
     subtotal: number;
@@ -49,7 +58,8 @@ export default function POSScreen() {
     orderId: string;
     time: string;
     note: string;
-    paymentMethod: 'cash' | 'card';
+    paymentMethod: 'cash' | 'card' | 'digital';
+    digitalMethod?: string;
     cashReceived?: number;
     changeDue?: number;
   }>(null);
@@ -61,6 +71,12 @@ export default function POSScreen() {
           .map(d => ({ id: d.id, ...d.data() } as MenuItem))
           .filter(i => i.available)
       );
+    });
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(collection(db, 'digitalPayments'), snap => {
+      setDigitalMethods(snap.docs.map(d => ({ id: d.id, ...d.data() } as DigitalMethod)));
     });
   }, []);
 
@@ -84,7 +100,15 @@ export default function POSScreen() {
 
   const removeFromCart = (id: string) => setCart(prev => prev.filter(c => c.id !== id));
 
-  const clearCart = () => { setCart([]); setDiscountPct(0); setNote(''); setCashReceived(''); setPaymentMethod('cash'); };
+  const clearCart = () => {
+    setCart([]);
+    setDiscountPct(0);
+    setNote('');
+    setCashReceived('');
+    setPaymentMethod('cash');
+    setSelectedDigital(null);
+    setQrModal(false);
+  };
 
   // ─── Totals ─────────────────────────────────────────────────────────────────
 
@@ -99,12 +123,17 @@ export default function POSScreen() {
     if (!cart.length) return;
     setCashReceived('');
     setPaymentMethod('cash');
+    setSelectedDigital(null);
+    setQrModal(false);
     setPaymentModal(true);
   };
 
   const cashReceivedNum = parseFloat(cashReceived) || 0;
   const changeDue = Math.max(0, cashReceivedNum - total);
-  const cashValid = paymentMethod === 'card' || cashReceivedNum >= total;
+  const cashValid =
+    paymentMethod === 'card' ||
+    (paymentMethod === 'digital' && !!selectedDigital) ||
+    (paymentMethod === 'cash' && cashReceivedNum >= total);
 
   const nextReceiptNumber = async () => {
     try {
@@ -118,7 +147,6 @@ export default function POSScreen() {
       });
       return next.toString(36).toUpperCase().padStart(5, '0').slice(-5);
     } catch {
-      // Offline fallback — use timestamp-based local ID, syncs properly when back online
       return 'L-' + Date.now().toString(36).toUpperCase().slice(-5);
     }
   };
@@ -136,6 +164,7 @@ export default function POSScreen() {
         discountPct,
         notes: note,
         paymentMethod,
+        digitalMethod: paymentMethod === 'digital' ? (selectedDigital?.name ?? null) : null,
         cashReceived: paymentMethod === 'cash' ? cashReceivedNum : null,
         changeDue: paymentMethod === 'cash' ? changeDue : null,
         status: 'pending',
@@ -154,11 +183,13 @@ export default function POSScreen() {
         itemCount: cart.reduce((s, c) => s + c.qty, 0),
         items: cart.map(c => ({ name: c.name, qty: c.qty, price: c.price })),
         paymentMethod,
+        digitalMethod: paymentMethod === 'digital' ? (selectedDigital?.name ?? null) : null,
         cashier: user?.displayName ?? user?.email,
         createdAt: serverTimestamp(),
       });
 
       setPaymentModal(false);
+      setQrModal(false);
       setReceipt({
         items: [...cart],
         subtotal,
@@ -169,6 +200,7 @@ export default function POSScreen() {
         time: new Date().toLocaleString(),
         note,
         paymentMethod,
+        digitalMethod: paymentMethod === 'digital' ? selectedDigital?.name : undefined,
         cashReceived: paymentMethod === 'cash' ? cashReceivedNum : undefined,
         changeDue: paymentMethod === 'cash' ? changeDue : undefined,
       });
@@ -459,7 +491,6 @@ export default function POSScreen() {
       {paymentModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#161616] border border-white/10 w-full max-w-sm">
-            {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
               <h3 className="text-white font-serif text-lg">Payment</h3>
               <button onClick={() => setPaymentModal(false)} className="text-white/30 hover:text-white transition-colors">
@@ -474,10 +505,10 @@ export default function POSScreen() {
                 <p className="text-gold font-mono font-bold text-4xl">${total.toFixed(2)}</p>
               </div>
 
-              {/* Method selector */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Method selector — 3 columns */}
+              <div className="grid grid-cols-3 gap-3">
                 <button
-                  onClick={() => setPaymentMethod('cash')}
+                  onClick={() => { setPaymentMethod('cash'); setSelectedDigital(null); }}
                   className={`flex flex-col items-center gap-2 py-4 border transition-all ${
                     paymentMethod === 'cash'
                       ? 'border-gold bg-gold/10 text-gold'
@@ -488,7 +519,7 @@ export default function POSScreen() {
                   <span className="text-xs font-bold uppercase tracking-widest">Cash</span>
                 </button>
                 <button
-                  onClick={() => setPaymentMethod('card')}
+                  onClick={() => { setPaymentMethod('card'); setSelectedDigital(null); }}
                   className={`flex flex-col items-center gap-2 py-4 border transition-all ${
                     paymentMethod === 'card'
                       ? 'border-gold bg-gold/10 text-gold'
@@ -498,9 +529,20 @@ export default function POSScreen() {
                   <CreditCard size={22} />
                   <span className="text-xs font-bold uppercase tracking-widest">Card</span>
                 </button>
+                <button
+                  onClick={() => { setPaymentMethod('digital'); setSelectedDigital(null); }}
+                  className={`flex flex-col items-center gap-2 py-4 border transition-all ${
+                    paymentMethod === 'digital'
+                      ? 'border-gold bg-gold/10 text-gold'
+                      : 'border-white/10 text-white/40 hover:border-white/30'
+                  }`}
+                >
+                  <QrCode size={22} />
+                  <span className="text-xs font-bold uppercase tracking-widest">Digital</span>
+                </button>
               </div>
 
-              {/* Cash received input */}
+              {/* Cash */}
               {paymentMethod === 'cash' && (
                 <div className="space-y-3">
                   <div>
@@ -516,7 +558,6 @@ export default function POSScreen() {
                       autoFocus
                     />
                   </div>
-                  {/* Quick cash buttons */}
                   <div className="grid grid-cols-4 gap-2">
                     {[
                       Math.ceil(total),
@@ -533,7 +574,6 @@ export default function POSScreen() {
                       </button>
                     ))}
                   </div>
-                  {/* Change due */}
                   {cashReceivedNum >= total && (
                     <div className="flex justify-between items-center py-3 px-4 bg-green-500/10 border border-green-500/20">
                       <span className="text-green-400 text-sm font-mono uppercase tracking-widest">Change Due</span>
@@ -549,7 +589,7 @@ export default function POSScreen() {
                 </div>
               )}
 
-              {/* Card notice */}
+              {/* Card */}
               {paymentMethod === 'card' && (
                 <div className="py-4 px-4 bg-blue-500/10 border border-blue-500/20 text-center">
                   <CreditCard size={20} className="text-blue-400 mx-auto mb-2" />
@@ -558,7 +598,50 @@ export default function POSScreen() {
                 </div>
               )}
 
-              {/* Confirm button */}
+              {/* Digital */}
+              {paymentMethod === 'digital' && (
+                <div className="space-y-3">
+                  {digitalMethods.length === 0 ? (
+                    <div className="py-6 text-center text-white/20 font-mono text-xs border border-white/10">
+                      No digital methods set up yet.<br />Go to Site Settings → Digital Payments.
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-white/30 text-[10px] uppercase tracking-widest font-mono">Select method — QR will appear</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {digitalMethods.map(m => (
+                          <button
+                            key={m.id}
+                            onClick={() => { setSelectedDigital(m); setQrModal(true); }}
+                            className={`flex flex-col items-center gap-2 py-3 px-2 border transition-all ${
+                              selectedDigital?.id === m.id
+                                ? 'border-gold bg-gold/10 text-gold'
+                                : 'border-white/10 text-white/50 hover:border-white/30 hover:text-white'
+                            }`}
+                          >
+                            <QrCode size={18} />
+                            <span className="text-xs font-bold uppercase tracking-widest text-center leading-tight">{m.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                      {selectedDigital && (
+                        <div className="flex items-center gap-2 py-2 px-3 bg-green-500/10 border border-green-500/20">
+                          <Check size={13} className="text-green-400 shrink-0" />
+                          <span className="text-green-400 text-xs font-mono flex-1">{selectedDigital.name} selected</span>
+                          <button
+                            onClick={() => setQrModal(true)}
+                            className="text-green-400/60 hover:text-green-400 text-[10px] font-mono uppercase tracking-widest transition-colors"
+                          >
+                            Show QR
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Confirm */}
               <button
                 onClick={handleConfirmPayment}
                 disabled={!cashValid || checkingOut}
@@ -566,11 +649,41 @@ export default function POSScreen() {
               >
                 {checkingOut
                   ? <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  : <Check size={16} />
-                }
-                {checkingOut ? 'Processing...' : paymentMethod === 'card' ? 'Confirm Card Payment' : 'Confirm Cash Payment'}
+                  : <Check size={16} />}
+                {checkingOut
+                  ? 'Processing...'
+                  : paymentMethod === 'card'
+                    ? 'Confirm Card Payment'
+                    : paymentMethod === 'digital'
+                      ? `Confirm ${selectedDigital?.name ?? 'Digital'} Payment`
+                      : 'Confirm Cash Payment'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── QR Code popup ─────────────────────────────────────────────────────── */}
+      {qrModal && selectedDigital && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[60] flex items-center justify-center p-6">
+          <div className="bg-white rounded-2xl p-7 w-full max-w-xs flex flex-col items-center gap-5 shadow-2xl">
+            <div className="text-center">
+              <p className="text-[10px] text-gray-400 uppercase tracking-widest font-mono mb-1">Scan to Pay via</p>
+              <p className="text-2xl font-bold text-gray-900">{selectedDigital.name}</p>
+            </div>
+            <img
+              src={selectedDigital.qrUrl}
+              alt={`${selectedDigital.name} QR`}
+              className="w-52 h-52 object-contain rounded-lg"
+            />
+            <p className="text-2xl font-bold font-mono text-gray-900">${total.toFixed(2)}</p>
+            <p className="text-xs text-gray-400 text-center -mt-2">Show this screen to the customer</p>
+            <button
+              onClick={() => setQrModal(false)}
+              className="w-full bg-gray-900 hover:bg-black text-white py-3.5 font-bold uppercase tracking-widest text-sm transition-all flex items-center justify-center gap-2 rounded-xl"
+            >
+              <Check size={16} /> Done — Payment Received
+            </button>
           </div>
         </div>
       )}
@@ -580,7 +693,6 @@ export default function POSScreen() {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-xs rounded-sm shadow-2xl">
             <div className="p-5">
-              {/* Printable receipt content */}
               <div ref={receiptRef}>
                 <h2 className="text-center font-bold text-lg">Unwind</h2>
                 <p className="center text-center text-xs text-gray-500 mb-1">Restaurant</p>
@@ -619,7 +731,11 @@ export default function POSScreen() {
                 <div className="line border-t border-dashed border-gray-300 my-3" />
                 <div className="row flex justify-between text-xs text-gray-500 mb-1">
                   <span>Payment</span>
-                  <span className="font-bold text-gray-800 uppercase">{receipt.paymentMethod}</span>
+                  <span className="font-bold text-gray-800 uppercase">
+                    {receipt.paymentMethod === 'digital' && receipt.digitalMethod
+                      ? receipt.digitalMethod
+                      : receipt.paymentMethod}
+                  </span>
                 </div>
                 {receipt.paymentMethod === 'cash' && receipt.cashReceived !== undefined && (
                   <>
@@ -639,7 +755,6 @@ export default function POSScreen() {
               </div>
             </div>
 
-            {/* Actions */}
             <div className="flex border-t border-gray-100">
               <button
                 onClick={printReceipt}
