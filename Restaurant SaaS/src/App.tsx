@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { WifiOff } from 'lucide-react';
+import PWAUpdatePrompt from './components/PWAUpdatePrompt';
+import { ToastProvider } from './context/ToastContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SiteConfigProvider } from './context/SiteConfigContext';
 import { CartProvider } from './context/CartContext';
@@ -62,12 +65,32 @@ function AdminRoute() {
   return <AdminLoginPage />;
 }
 
+function OfflineBanner() {
+  const [online, setOnline] = useState(navigator.onLine);
+  useEffect(() => {
+    const up = () => setOnline(true);
+    const down = () => setOnline(false);
+    window.addEventListener('online', up);
+    window.addEventListener('offline', down);
+    return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down); };
+  }, []);
+  if (online) return null;
+  return (
+    <div className="fixed top-0 left-0 right-0 z-[9999] bg-yellow-500 text-black text-xs font-mono font-bold uppercase tracking-widest flex items-center justify-center gap-2 py-1.5">
+      <WifiOff size={12} /> Offline — orders will sync when connection is restored
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <CartProvider>
         <SiteConfigProvider>
+        <ToastProvider>
+          <OfflineBanner />
+          <PWAUpdatePrompt />
           <Routes>
             <Route path="/" element={<PublicSite />} />
             <Route path="/admin" element={<AdminRoute />} />
@@ -97,6 +120,7 @@ export default function App() {
             />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+        </ToastProvider>
         </SiteConfigProvider>
         </CartProvider>
       </AuthProvider>

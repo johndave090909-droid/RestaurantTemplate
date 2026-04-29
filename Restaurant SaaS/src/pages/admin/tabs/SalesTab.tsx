@@ -1,13 +1,14 @@
-import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, orderBy, query, where, Timestamp } from 'firebase/firestore';
+import React, { useEffect, useRef, useState } from 'react';
+import { collection, doc, getDoc, onSnapshot, orderBy, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
-import { TrendingUp, ShoppingBag, Receipt, DollarSign } from 'lucide-react';
+import { TrendingUp, ShoppingBag, Receipt, DollarSign, X, Printer } from 'lucide-react';
 
 interface Sale {
   id: string;
+  orderId?: string;
   receiptNo?: string;
   total: number;
   subtotal: number;
@@ -15,8 +16,15 @@ interface Sale {
   tax: number;
   itemCount: number;
   items: { name: string; qty: number; price: number }[];
+  paymentMethod?: 'cash' | 'card';
   cashier: string;
   createdAt: Timestamp;
+}
+
+interface ReceiptData extends Sale {
+  cashReceived?: number;
+  changeDue?: number;
+  notes?: string;
 }
 
 type Range = 'today' | 'week' | 'month';
@@ -70,6 +78,36 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 export default function SalesTab() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [range, setRange] = useState<Range>('today');
+  const [receiptModal, setReceiptModal] = useState<ReceiptData | null>(null);
+  const [loadingReceipt, setLoadingReceipt] = useState(false);
+  const receiptRef = useRef<HTMLDivElement>(null);
+
+  const openReceipt = async (sale: Sale) => {
+    setLoadingReceipt(true);
+    let extra: { cashReceived?: number; changeDue?: number; notes?: string } = {};
+    if (sale.orderId) {
+      try {
+        const snap = await getDoc(doc(db, 'orders', sale.orderId));
+        if (snap.exists()) {
+          const d = snap.data();
+          extra = { cashReceived: d.cashReceived ?? undefined, changeDue: d.changeDue ?? undefined, notes: d.notes };
+        }
+      } catch {}
+    }
+    setReceiptModal({ ...sale, ...extra });
+    setLoadingReceipt(false);
+  };
+
+  const printReceipt = () => {
+    const content = receiptRef.current?.innerHTML;
+    if (!content) return;
+    const win = window.open('', '_blank', 'width=400,height=600');
+    if (!win) return;
+    win.document.write(`<html><body style="font-family:monospace;padding:20px">${content}</body></html>`);
+    win.document.close();
+    win.print();
+    win.close();
+  };
 
   useEffect(() => {
     const start = Timestamp.fromDate(startOf(range));
@@ -272,7 +310,12 @@ export default function SalesTab() {
           <p className="text-gold text-[10px] uppercase tracking-widest font-mono mb-4">Recent Transactions</p>
           <div className="space-y-2">
             {sales.slice(0, 10).map(sale => (
-              <div key={sale.id} className="flex items-center justify-between text-sm py-2 border-b border-white/5 last:border-0">
+              <button
+                key={sale.id}
+                onClick={() => openReceipt(sale)}
+                disabled={loadingReceipt}
+                className="w-full flex items-center justify-between text-sm py-2 border-b border-white/5 last:border-0 hover:bg-white/5 px-2 -mx-2 transition-colors text-left rounded"
+              >
                 <div>
                   <span className="text-white/50 font-mono text-xs">
                     {sale.createdAt ? sale.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
@@ -286,8 +329,88 @@ export default function SalesTab() {
                   <span className="text-white/30 text-xs">{sale.itemCount} item{sale.itemCount !== 1 ? 's' : ''}</span>
                   <span className="text-gold font-mono font-bold">${sale.total.toFixed(2)}</span>
                 </div>
-              </div>
+              </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Receipt modal */}
+      {receiptModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setReceiptModal(null)}>
+          <div className="bg-white w-full max-w-xs rounded-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="p-5">
+              <div ref={receiptRef}>
+                <h2 className="text-center font-bold text-lg">Unwind</h2>
+                <p className="text-center text-xs text-gray-500 mb-1">Restaurant</p>
+                <div className="border-t border-dashed border-gray-300 my-3" />
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>Order #</span>
+                  <span className="font-bold text-gray-800">{receiptModal.receiptNo ?? '—'}</span>
+                </div>
+                <div className="flex justify-between text-xs text-gray-500 mb-3">
+                  <span>Date</span>
+                  <span>{receiptModal.createdAt ? receiptModal.createdAt.toDate().toLocaleString() : '—'}</span>
+                </div>
+                <div className="border-t border-dashed border-gray-300 my-3" />
+                {receiptModal.items?.map((item, i) => (
+                  <div key={i} className="flex justify-between text-sm mb-1">
+                    <span>{item.qty}× {item.name}</span>
+                    <span>${(item.price * item.qty).toFixed(2)}</span>
+                  </div>
+                ))}
+                <div className="border-t border-dashed border-gray-300 my-3" />
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>Subtotal</span><span>${receiptModal.subtotal.toFixed(2)}</span>
+                </div>
+                {receiptModal.discount > 0 && (
+                  <div className="flex justify-between text-xs text-green-600 mb-1">
+                    <span>Discount</span><span>-${receiptModal.discount.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>Tax</span><span>${receiptModal.tax.toFixed(2)}</span>
+                </div>
+                <div className="border-t border-dashed border-gray-300 my-3" />
+                <div className="flex justify-between font-bold text-base">
+                  <span>TOTAL</span><span>${receiptModal.total.toFixed(2)}</span>
+                </div>
+                <div className="border-t border-dashed border-gray-300 my-3" />
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>Payment</span>
+                  <span className="font-bold text-gray-800 uppercase">{receiptModal.paymentMethod ?? '—'}</span>
+                </div>
+                {receiptModal.paymentMethod === 'cash' && receiptModal.cashReceived !== undefined && (
+                  <>
+                    <div className="flex justify-between text-xs text-gray-500 mb-1">
+                      <span>Cash Received</span><span>${receiptModal.cashReceived.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs font-bold text-gray-800 mb-1">
+                      <span>Change Due</span><span>${(receiptModal.changeDue ?? 0).toFixed(2)}</span>
+                    </div>
+                  </>
+                )}
+                {receiptModal.notes && (
+                  <p className="text-xs text-gray-400 mt-2 italic">Note: {receiptModal.notes}</p>
+                )}
+                <div className="border-t border-dashed border-gray-300 my-3" />
+                <p className="text-center text-xs text-gray-400">Thank you for dining with us!</p>
+              </div>
+            </div>
+            <div className="flex border-t border-gray-100">
+              <button
+                onClick={printReceipt}
+                className="flex-1 flex items-center justify-center gap-2 py-3.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors border-r border-gray-100"
+              >
+                <Printer size={15} /> Print
+              </button>
+              <button
+                onClick={() => setReceiptModal(null)}
+                className="flex-1 flex items-center justify-center gap-2 py-3.5 text-sm font-bold text-white bg-[#1a1a1a] hover:bg-[#111] transition-colors"
+              >
+                <X size={15} /> Close
+              </button>
+            </div>
           </div>
         </div>
       )}

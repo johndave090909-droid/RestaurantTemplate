@@ -1,15 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import {
   collection, onSnapshot, addDoc, updateDoc, deleteDoc,
-  doc, serverTimestamp, query, orderBy, getDoc, setDoc, writeBatch,
+  doc, serverTimestamp, query, orderBy, getDoc, setDoc, writeBatch, limit,
 } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import {
   Plus, Pencil, Trash2, Check, X, Package, AlertTriangle, TrendingDown,
   Settings2, ClipboardList, ArrowLeftRight, Bell, BarChart2, RefreshCw, Printer,
-  Truck, Phone, Mail, MapPin, Globe, User,
+  Truck, Phone, Mail, MapPin, Globe, User, History, ArrowUp, ArrowDown, Download,
 } from 'lucide-react';
 import { useAuth, can } from '../../../context/AuthContext';
+import { useToast } from '../../../context/ToastContext';
 import SeedInventoryButton from './SeedInventoryButton';
 
 interface InventoryItem {
@@ -29,7 +30,27 @@ const BASE_CATEGORIES = ['Produce', 'Dairy', 'Meat & Poultry', 'Seafood', 'Pantr
 const BASE_UNITS = ['kg', 'g', 'L', 'mL', 'pcs', 'boxes', 'bottles', 'cans'];
 const STATUS_FILTERS = ['All', 'In Stock', 'Low Stock', 'Out of Stock'];
 
-type PanelMode = 'customize' | 'count' | 'convert' | 'remind' | 'report' | 'update' | 'suppliers' | null;
+type PanelMode = 'customize' | 'count' | 'convert' | 'remind' | 'report' | 'update' | 'suppliers' | 'history' | null;
+
+interface LogEntry {
+  id: string;
+  itemId: string;
+  itemName: string;
+  fromQty: number;
+  toQty: number;
+  delta: number;
+  unit: string;
+  reason: string;
+  changedBy: string;
+  changedAt: { seconds: number } | null;
+}
+
+const REASON_LABEL: Record<string, string> = {
+  manual_adjust: 'Manual Adjust',
+  stock_count:   'Stock Count',
+  bulk_update:   'Bulk Update',
+  item_edit:     'Item Edit',
+};
 
 interface Supplier {
   id: string;
@@ -81,8 +102,14 @@ const emptyForm = (): Omit<InventoryItem, 'id'> => ({
 });
 
 export default function InventoryTab() {
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const canManage = can.manageInventory(role);
+  const { toast } = useToast();
+
+  // ── Log + notify state ───────────────────────────────
+  const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
+  const [logFilter,  setLogFilter]  = useState('');
+  const [logLoading, setLogLoading] = useState(false);
 
   // ── Core state ──────────────────────────────────────
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -163,26 +190,85 @@ export default function InventoryTab() {
     });
   }, [items]);
 
+  // Load movement log when history panel is open
+  useEffect(() => {
+    if (activePanel !== 'history') return;
+    setLogLoading(true);
+    const q = query(collection(db, 'inventoryLog'), orderBy('changedAt', 'desc'), limit(100));
+    const unsub = onSnapshot(q, snap => {
+      setLogEntries(snap.docs.map(d => ({ id: d.id, ...d.data() } as LogEntry)));
+      setLogLoading(false);
+    }, () => setLogLoading(false));
+    return unsub;
+  }, [activePanel]);
+
   const togglePanel = (p: PanelMode) => {
     setActivePanel(prev => prev === p ? null : p);
     setAdding(false);
     setEditId(null);
   };
 
+  // ── Helpers ──────────────────────────────────────────
+  const writeLog = async (
+    itemId: string, itemName: string,
+    fromQty: number, toQty: number,
+    unit: string, reason: string,
+  ) => {
+    try {
+      await addDoc(collection(db, 'inventoryLog'), {
+        itemId, itemName, fromQty, toQty,
+        delta: toQty - fromQty,
+        unit, reason,
+        changedBy: user?.displayName ?? user?.email ?? 'Unknown',
+        changedAt: serverTimestamp(),
+      });
+    } catch { /* log failures are non-critical */ }
+  };
+
+  const checkAndNotify = async (
+    itemId: string, itemName: string,
+    newQty: number, threshold: number, unit: string,
+  ) => {
+    if (newQty > threshold) return;
+    try {
+      await setDoc(doc(db, 'notifications', `low_stock_${itemId}`), {
+        type: 'low_stock', itemId, itemName,
+        quantity: newQty, unit, threshold,
+        read: false,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    } catch { /* non-critical */ }
+  };
+
   // ── CRUD ─────────────────────────────────────────────
   const save = async () => {
     if (!form.name.trim()) return;
-    if (editId) {
-      await updateDoc(doc(db, 'inventoryItems', editId), { ...form, updatedAt: serverTimestamp() });
-      setEditId(null);
-    } else {
-      await addDoc(collection(db, 'inventoryItems'), { ...form, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-      setAdding(false);
+    try {
+      if (editId) {
+        const prev = items.find(i => i.id === editId);
+        await updateDoc(doc(db, 'inventoryItems', editId), { ...form, updatedAt: serverTimestamp() });
+        if (prev && prev.quantity !== form.quantity) {
+          await writeLog(editId, form.name, prev.quantity, form.quantity, form.unit, 'item_edit');
+          await checkAndNotify(editId, form.name, form.quantity, form.minThreshold, form.unit);
+        }
+        setEditId(null);
+      } else {
+        await addDoc(collection(db, 'inventoryItems'), { ...form, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+        setAdding(false);
+      }
+      setForm(emptyForm());
+      toast('Item saved.', 'success');
+    } catch {
+      toast('Failed to save item. Please try again.');
     }
-    setForm(emptyForm());
   };
   const remove = async (id: string) => {
-    if (confirm('Delete this inventory item?')) await deleteDoc(doc(db, 'inventoryItems', id));
+    if (!confirm('Delete this inventory item?')) return;
+    try {
+      await deleteDoc(doc(db, 'inventoryItems', id));
+    } catch {
+      toast('Failed to delete item. Please try again.');
+    }
   };
   const startEdit = (item: InventoryItem) => {
     setEditId(item.id);
@@ -193,23 +279,39 @@ export default function InventoryTab() {
   const cancel = () => { setEditId(null); setAdding(false); setForm(emptyForm()); };
   const adjustQty = async (item: InventoryItem, delta: number) => {
     const next = Math.max(0, item.quantity + delta);
-    await updateDoc(doc(db, 'inventoryItems', item.id), { quantity: next, updatedAt: serverTimestamp() });
+    try {
+      await updateDoc(doc(db, 'inventoryItems', item.id), { quantity: next, updatedAt: serverTimestamp() });
+      await writeLog(item.id, item.name, item.quantity, next, item.unit, 'manual_adjust');
+      await checkAndNotify(item.id, item.name, next, item.minThreshold, item.unit);
+    } catch {
+      toast('Failed to update quantity.');
+    }
   };
 
   // ── Suppliers ────────────────────────────────────────
   const saveSupplier = async () => {
     if (!supplierForm.name.trim()) return;
-    if (supplierEditId) {
-      await updateDoc(doc(db, 'suppliers', supplierEditId), { ...supplierForm, updatedAt: serverTimestamp() });
-      setSupplierEditId(null);
-    } else {
-      await addDoc(collection(db, 'suppliers'), { ...supplierForm, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-      setAddingSupplier(false);
+    try {
+      if (supplierEditId) {
+        await updateDoc(doc(db, 'suppliers', supplierEditId), { ...supplierForm, updatedAt: serverTimestamp() });
+        setSupplierEditId(null);
+      } else {
+        await addDoc(collection(db, 'suppliers'), { ...supplierForm, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+        setAddingSupplier(false);
+      }
+      setSupplierForm(emptySupplier());
+      toast('Supplier saved.', 'success');
+    } catch {
+      toast('Failed to save supplier. Please try again.');
     }
-    setSupplierForm(emptySupplier());
   };
   const removeSupplier = async (id: string) => {
-    if (confirm('Delete this supplier?')) await deleteDoc(doc(db, 'suppliers', id));
+    if (!confirm('Delete this supplier?')) return;
+    try {
+      await deleteDoc(doc(db, 'suppliers', id));
+    } catch {
+      toast('Failed to delete supplier. Please try again.');
+    }
   };
   const startEditSupplier = (s: Supplier) => {
     setSupplierEditId(s.id);
@@ -251,18 +353,30 @@ export default function InventoryTab() {
   // ── Count ─────────────────────────────────────────────
   const saveCount = async () => {
     setCountSaving(true);
-    const batch = writeBatch(db);
-    items.forEach(item => {
-      const val = parseFloat(countInputs[item.id] ?? '');
-      if (!isNaN(val) && countInputs[item.id] !== '') {
-        batch.update(doc(db, 'inventoryItems', item.id), { quantity: val, updatedAt: serverTimestamp() });
-      }
-    });
-    await batch.commit();
-    setCountSaving(false);
-    const reset: Record<string, string> = {};
-    items.forEach(i => { reset[i.id] = ''; });
-    setCountInputs(reset);
+    try {
+      const changes: { item: InventoryItem; newVal: number }[] = [];
+      const batch = writeBatch(db);
+      items.forEach(item => {
+        const val = parseFloat(countInputs[item.id] ?? '');
+        if (!isNaN(val) && countInputs[item.id] !== '') {
+          batch.update(doc(db, 'inventoryItems', item.id), { quantity: val, updatedAt: serverTimestamp() });
+          changes.push({ item, newVal: val });
+        }
+      });
+      await batch.commit();
+      await Promise.all(changes.map(({ item, newVal }) => Promise.all([
+        writeLog(item.id, item.name, item.quantity, newVal, item.unit, 'stock_count'),
+        checkAndNotify(item.id, item.name, newVal, item.minThreshold, item.unit),
+      ])));
+      const reset: Record<string, string> = {};
+      items.forEach(i => { reset[i.id] = ''; });
+      setCountInputs(reset);
+      toast('Stock count saved.', 'success');
+    } catch {
+      toast('Failed to save count. Please try again.');
+    } finally {
+      setCountSaving(false);
+    }
   };
 
   // ── Convert ───────────────────────────────────────────
@@ -276,21 +390,39 @@ export default function InventoryTab() {
 
   // ── Remind ────────────────────────────────────────────
   const needsReorder = items.filter(i => stockStatus(i) !== 'In Stock');
-  const markOrdered = async (id: string) =>
-    updateDoc(doc(db, 'inventoryItems', id), { lastOrdered: serverTimestamp() });
+  const markOrdered = async (id: string) => {
+    try {
+      await updateDoc(doc(db, 'inventoryItems', id), { lastOrdered: serverTimestamp() });
+      toast('Marked as ordered.', 'success');
+    } catch {
+      toast('Failed to update item.');
+    }
+  };
 
   // ── Update ────────────────────────────────────────────
   const saveUpdates = async () => {
     setUpdateSaving(true);
-    const batch = writeBatch(db);
-    items.forEach(item => {
-      const val = parseFloat(updateInputs[item.id] ?? '');
-      if (!isNaN(val) && val !== item.quantity) {
-        batch.update(doc(db, 'inventoryItems', item.id), { quantity: val, updatedAt: serverTimestamp() });
-      }
-    });
-    await batch.commit();
-    setUpdateSaving(false);
+    try {
+      const changes: { item: InventoryItem; newVal: number }[] = [];
+      const batch = writeBatch(db);
+      items.forEach(item => {
+        const val = parseFloat(updateInputs[item.id] ?? '');
+        if (!isNaN(val) && val !== item.quantity) {
+          batch.update(doc(db, 'inventoryItems', item.id), { quantity: val, updatedAt: serverTimestamp() });
+          changes.push({ item, newVal: val });
+        }
+      });
+      await batch.commit();
+      await Promise.all(changes.map(({ item, newVal }) => Promise.all([
+        writeLog(item.id, item.name, item.quantity, newVal, item.unit, 'bulk_update'),
+        checkAndNotify(item.id, item.name, newVal, item.minThreshold, item.unit),
+      ])));
+      toast('Quantities updated.', 'success');
+    } catch {
+      toast('Failed to save updates. Please try again.');
+    } finally {
+      setUpdateSaving(false);
+    }
   };
 
   // ── Report ────────────────────────────────────────────
@@ -323,6 +455,32 @@ export default function InventoryTab() {
   const outCount     = items.filter(i => stockStatus(i) === 'Out of Stock').length;
   const totalValue   = items.reduce((s, i) => s + i.quantity * i.costPerUnit, 0);
 
+  // ── CSV Export ────────────────────────────────────────
+  const exportCSV = () => {
+    const headers = ['Name', 'Category', 'Quantity', 'Unit', 'Cost/Unit ($)', 'Stock Value ($)', 'Status', 'Supplier', 'Notes'];
+    const rows = filtered.map(item => [
+      item.name,
+      item.category,
+      item.quantity,
+      item.unit,
+      item.costPerUnit.toFixed(2),
+      (item.quantity * item.costPerUnit).toFixed(2),
+      stockStatus(item),
+      item.supplier,
+      item.notes,
+    ]);
+    const csv = [headers, ...rows]
+      .map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `inventory-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   // ── Styles ────────────────────────────────────────────
   const inputCls  = "w-full bg-white/5 border border-white/10 px-3 py-2 text-white text-sm focus:outline-none focus:border-gold/50 transition-colors";
   const selectCls = "w-full bg-zinc-900 border border-white/10 px-3 py-2 text-white text-sm focus:outline-none focus:border-gold/50 transition-colors cursor-pointer [&>option]:bg-zinc-900 [&>option]:text-white";
@@ -335,6 +493,7 @@ export default function InventoryTab() {
     { id: 'report',    label: 'Report',     icon: <BarChart2 size={13} />     },
     { id: 'update',    label: 'Update',     icon: <RefreshCw size={13} />     },
     { id: 'suppliers', label: 'Suppliers',  icon: <Truck size={13} />         },
+    { id: 'history',   label: 'History',    icon: <History size={13} />       },
   ];
 
   // ─────────────────────────────────────────────────────
@@ -343,17 +502,25 @@ export default function InventoryTab() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h2 className="text-white font-serif text-2xl">Inventory</h2>
-        {canManage && (
-          <div className="flex items-center gap-2">
-            <SeedInventoryButton />
-            <button
-              onClick={() => { setAdding(true); setEditId(null); setForm(emptyForm()); setActivePanel(null); }}
-              className="flex items-center gap-2 bg-gold hover:bg-gold/80 text-white px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all"
-            >
-              <Plus size={14} /> Add Item
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportCSV}
+            className="flex items-center gap-2 border border-white/10 text-white/40 hover:border-gold/50 hover:text-gold px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all"
+          >
+            <Download size={14} /> Export CSV
+          </button>
+          {canManage && (
+            <>
+              <SeedInventoryButton />
+              <button
+                onClick={() => { setAdding(true); setEditId(null); setForm(emptyForm()); setActivePanel(null); }}
+                className="flex items-center gap-2 bg-gold hover:bg-gold/80 text-white px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all"
+              >
+                <Plus size={14} /> Add Item
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Stats */}
@@ -943,6 +1110,81 @@ export default function InventoryTab() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════
+          HISTORY PANEL
+      ════════════════════════════════════════════════════ */}
+      {activePanel === 'history' && (
+        <div className="bg-white/3 border border-gold/30 p-5 mb-6">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+            <div>
+              <p className="text-gold text-[10px] uppercase tracking-widest font-mono">Movement Log</p>
+              <p className="text-white/30 text-xs mt-0.5">Last 100 changes across all inventory items.</p>
+            </div>
+            <input
+              className="bg-white/5 border border-white/10 px-3 py-1.5 text-white text-xs focus:outline-none focus:border-gold/50 transition-colors w-52 placeholder:text-white/20"
+              placeholder="Filter by item or reason…"
+              value={logFilter}
+              onChange={e => setLogFilter(e.target.value)}
+            />
+          </div>
+
+          {logLoading ? (
+            <div className="text-center py-10 text-white/20 font-mono text-sm">Loading…</div>
+          ) : (() => {
+            const q = logFilter.toLowerCase();
+            const filtered = logEntries.filter(e =>
+              !q || e.itemName.toLowerCase().includes(q) || (REASON_LABEL[e.reason] ?? e.reason).toLowerCase().includes(q)
+            );
+            if (filtered.length === 0) return (
+              <div className="text-center py-10 text-white/20 font-mono text-sm">No log entries found.</div>
+            );
+            return (
+              <div className="space-y-1">
+                {/* Column headers */}
+                <div className="grid grid-cols-[1fr_80px_100px_90px_110px] gap-3 px-3 pb-2 border-b border-white/10 hidden sm:grid">
+                  <span className="text-white/30 text-[9px] uppercase tracking-widest font-mono">Item</span>
+                  <span className="text-white/30 text-[9px] uppercase tracking-widest font-mono text-center">Change</span>
+                  <span className="text-white/30 text-[9px] uppercase tracking-widest font-mono">Reason</span>
+                  <span className="text-white/30 text-[9px] uppercase tracking-widest font-mono">By</span>
+                  <span className="text-white/30 text-[9px] uppercase tracking-widest font-mono text-right">When</span>
+                </div>
+                {filtered.map(entry => {
+                  const isUp = entry.delta >= 0;
+                  const ts = entry.changedAt
+                    ? new Date(entry.changedAt.seconds * 1000).toLocaleString(undefined, {
+                        month: 'short', day: 'numeric',
+                        hour: '2-digit', minute: '2-digit',
+                      })
+                    : '—';
+                  return (
+                    <div key={entry.id} className="grid grid-cols-1 sm:grid-cols-[1fr_80px_100px_90px_110px] gap-1 sm:gap-3 items-start sm:items-center px-3 py-2.5 border border-white/5 hover:bg-white/3 transition-colors">
+                      <div>
+                        <span className="text-white text-sm font-medium">{entry.itemName}</span>
+                        <span className="text-white/20 font-mono text-xs ml-2">{entry.fromQty} → {entry.toQty} {entry.unit}</span>
+                      </div>
+                      <div className="flex items-center gap-1 sm:justify-center">
+                        {isUp
+                          ? <ArrowUp size={11} className="text-green-400 shrink-0" />
+                          : <ArrowDown size={11} className="text-red-400 shrink-0" />
+                        }
+                        <span className={`font-mono text-xs font-bold ${isUp ? 'text-green-400' : 'text-red-400'}`}>
+                          {isUp ? '+' : ''}{entry.delta} {entry.unit}
+                        </span>
+                      </div>
+                      <span className="text-white/40 text-[10px] uppercase tracking-widest font-mono">
+                        {REASON_LABEL[entry.reason] ?? entry.reason}
+                      </span>
+                      <span className="text-white/30 text-xs truncate">{entry.changedBy}</span>
+                      <span className="text-white/30 text-[10px] font-mono sm:text-right">{ts}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       )}
 

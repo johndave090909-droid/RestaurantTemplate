@@ -5,7 +5,7 @@ import { db } from '../../lib/firebase';
 import { useAuth } from '../../context/AuthContext';
 import {
   Plus, Minus, Trash2, LogOut, ShoppingBag,
-  Printer, Check, X, LayoutGrid, Banknote, CreditCard
+  Printer, Check, X, LayoutGrid, Banknote, CreditCard, ArrowLeft
 } from 'lucide-react';
 
 interface MenuItem {
@@ -107,15 +107,20 @@ export default function POSScreen() {
   const cashValid = paymentMethod === 'card' || cashReceivedNum >= total;
 
   const nextReceiptNumber = async () => {
-    const counterRef = doc(db, 'counters', 'receipts');
-    const next = await runTransaction(db, async (tx) => {
-      const snap = await tx.get(counterRef);
-      const current = snap.exists() ? (snap.data().value as number) : 0;
-      const value = current + 1;
-      tx.set(counterRef, { value, updatedAt: serverTimestamp() }, { merge: true });
-      return value;
-    });
-    return next.toString(36).toUpperCase().padStart(5, '0').slice(-5);
+    try {
+      const counterRef = doc(db, 'counters', 'receipts');
+      const next = await runTransaction(db, async (tx) => {
+        const snap = await tx.get(counterRef);
+        const current = snap.exists() ? (snap.data().value as number) : 0;
+        const value = current + 1;
+        tx.set(counterRef, { value, updatedAt: serverTimestamp() }, { merge: true });
+        return value;
+      });
+      return next.toString(36).toUpperCase().padStart(5, '0').slice(-5);
+    } catch {
+      // Offline fallback — use timestamp-based local ID, syncs properly when back online
+      return 'L-' + Date.now().toString(36).toUpperCase().slice(-5);
+    }
   };
 
   const handleConfirmPayment = async () => {
@@ -219,6 +224,13 @@ export default function POSScreen() {
       {/* Top bar */}
       <header className="flex items-center justify-between px-5 py-3 bg-[#0a0a0a] border-b border-white/10 shrink-0">
         <div className="flex items-center gap-4">
+          <button
+            onClick={() => navigate('/admin/dashboard')}
+            className="text-white/40 hover:text-white transition-colors"
+            title="Back to Admin Panel"
+          >
+            <ArrowLeft size={18} />
+          </button>
           <h1 className="font-serif italic text-white text-xl">Unwind</h1>
           <div className="h-4 w-[1px] bg-white/10" />
           <span className="text-gold/70 font-mono text-[10px] uppercase tracking-widest">POS</span>

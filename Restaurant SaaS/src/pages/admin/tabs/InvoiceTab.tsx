@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   collection, onSnapshot, addDoc, updateDoc, deleteDoc,
-  doc, query, orderBy, serverTimestamp, Timestamp,
+  doc, query, orderBy, serverTimestamp, Timestamp, writeBatch, runTransaction,
 } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage } from '../../../lib/firebase';
 import { useAuth } from '../../../context/AuthContext';
+import { useToast } from '../../../context/ToastContext';
 import {
   Upload, FileText, Trash2, Eye, X, DollarSign, AlertCircle,
   Clock, Save, FileCheck, ExternalLink,
@@ -15,6 +16,7 @@ import {
 
 interface Invoice {
   id: string;
+  invoiceNo?: string;
   title: string;
   vendor: string;
   amount: number;
@@ -27,6 +29,11 @@ interface Invoice {
   notes: string;
   uploadedBy: string;
   createdAt: Timestamp;
+}
+
+interface Supplier {
+  id: string;
+  name: string;
 }
 
 type DateFilter   = 'all' | 'today' | 'week' | 'month';
@@ -97,7 +104,9 @@ function StatCard({ icon, label, value, sub }: {
 
 export default function InvoiceTab() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [invoices, setInvoices]         = useState<Invoice[]>([]);
+  const [suppliers, setSuppliers]       = useState<Supplier[]>([]);
   const [uploading, setUploading]       = useState(false);
   const [uploadProgress, setProgress]   = useState(0);
   const [uploadError, setUploadError]   = useState('');
@@ -115,14 +124,68 @@ export default function InvoiceTab() {
   // Modal
   const [editInvoice, setEditInvoice]   = useState<Invoice | null>(null);
 
+  // Bulk selection
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const toggleSelect = (id: string) =>
+    setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const allSelected = filtered.length > 0 && filtered.every(i => selected.has(i.id));
+  const toggleAll = () =>
+    setSelected(allSelected ? new Set() : new Set(filtered.map(i => i.id)));
+
   // ─── Live data ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const q = query(collection(db, 'invoices'), orderBy('createdAt', 'desc'));
-    return onSnapshot(q, snap => {
-      setInvoices(snap.docs.map(d => ({ id: d.id, ...d.data() } as Invoice)));
+    return onSnapshot(q, async snap => {
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as Invoice));
+      setInvoices(docs);
+
+      // Auto-mark overdue: any unpaid invoice whose due date is in the past
+      const now = new Date();
+      const toOverdue = docs.filter(inv =>
+        inv.status === 'unpaid' &&
+        inv.dueDate !== null &&
+        inv.dueDate.toDate() < now
+      );
+      if (toOverdue.length > 0) {
+        const batch = writeBatch(db);
+        toOverdue.forEach(inv =>
+          batch.update(doc(db, 'invoices', inv.id), { status: 'overdue' })
+        );
+        await batch.commit();
+        // Next snapshot fires automatically with updated statuses
+      }
     });
   }, []);
+
+  useEffect(() => {
+    return onSnapshot(collection(db, 'suppliers'), snap => {
+      setSuppliers(
+        snap.docs
+          .map(d => ({ id: d.id, name: d.data().name as string }))
+          .filter(s => s.name)
+          .sort((a, b) => a.name.localeCompare(b.name))
+      );
+    });
+  }, []);
+
+  // ─── Invoice numbering ──────────────────────────────────────────────────────
+
+  const nextInvoiceNumber = async (): Promise<string> => {
+    try {
+      const counterRef = doc(db, 'counters', 'invoices');
+      const next = await runTransaction(db, async tx => {
+        const snap = await tx.get(counterRef);
+        const current = snap.exists() ? (snap.data().value as number) : 0;
+        const value = current + 1;
+        tx.set(counterRef, { value, updatedAt: serverTimestamp() }, { merge: true });
+        return value;
+      });
+      return `INV-${String(next).padStart(5, '0')}`;
+    } catch {
+      return `INV-L${Date.now().toString(36).toUpperCase().slice(-5)}`;
+    }
+  };
 
   // ─── Upload (file only) ─────────────────────────────────────────────────────
 
@@ -141,19 +204,21 @@ export default function InvoiceTab() {
         );
       });
       const fileURL = await getDownloadURL(storageRef);
+      const invoiceNo = await nextInvoiceNumber();
       await addDoc(collection(db, 'invoices'), {
-        title:       stripExt(file.name),
-        vendor:      '',
-        amount:      0,
+        invoiceNo,
+        title:        stripExt(file.name),
+        vendor:       '',
+        amount:       0,
         dateReceived: Timestamp.now(),
-        dueDate:     null,
-        status:      'unpaid',
+        dueDate:      null,
+        status:       'unpaid',
         fileURL,
-        fileName:    file.name,
-        fileType:    file.type,
-        notes:       '',
-        uploadedBy:  user?.displayName ?? user?.email ?? 'Unknown',
-        createdAt:   serverTimestamp(),
+        fileName:     file.name,
+        fileType:     file.type,
+        notes:        '',
+        uploadedBy:   user?.displayName ?? user?.email ?? 'Unknown',
+        createdAt:    serverTimestamp(),
       });
       setPendingFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -182,9 +247,45 @@ export default function InvoiceTab() {
 
   const handleDelete = async (inv: Invoice) => {
     if (!confirm(`Delete "${inv.title}"?`)) return;
-    try { await deleteObject(ref(storage, inv.fileURL)).catch(() => {}); } catch {}
-    await deleteDoc(doc(db, 'invoices', inv.id));
-    if (editInvoice?.id === inv.id) setEditInvoice(null);
+    try {
+      await deleteObject(ref(storage, inv.fileURL)).catch(() => {});
+      await deleteDoc(doc(db, 'invoices', inv.id));
+      if (editInvoice?.id === inv.id) setEditInvoice(null);
+      setSelected(prev => { const n = new Set(prev); n.delete(inv.id); return n; });
+    } catch {
+      toast('Failed to delete invoice. Please try again.');
+    }
+  };
+
+  const handleBulkMarkPaid = async () => {
+    if (selected.size === 0) return;
+    try {
+      const batch = writeBatch(db);
+      [...selected].forEach(id => batch.update(doc(db, 'invoices', id), { status: 'paid' }));
+      await batch.commit();
+      setSelected(new Set());
+      toast(`${selected.size} invoice${selected.size > 1 ? 's' : ''} marked as paid.`, 'success');
+    } catch {
+      toast('Failed to update invoices. Please try again.');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selected.size === 0) return;
+    const count = selected.size;
+    if (!confirm(`Delete ${count} invoice${count > 1 ? 's' : ''}? This cannot be undone.`)) return;
+    const toDelete = invoices.filter(i => selected.has(i.id));
+    try {
+      await Promise.all(toDelete.map(inv => deleteObject(ref(storage, inv.fileURL)).catch(() => {})));
+      const batch = writeBatch(db);
+      toDelete.forEach(inv => batch.delete(doc(db, 'invoices', inv.id)));
+      await batch.commit();
+      setSelected(new Set());
+      if (editInvoice && selected.has(editInvoice.id)) setEditInvoice(null);
+      toast(`${count} invoice${count > 1 ? 's' : ''} deleted.`, 'success');
+    } catch {
+      toast('Failed to delete invoices. Please try again.');
+    }
   };
 
   // ─── Filtered list ──────────────────────────────────────────────────────────
@@ -349,6 +450,32 @@ export default function InvoiceTab() {
         </div>
       </div>
 
+      {/* Bulk action toolbar */}
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-3 mb-2 bg-gold/10 border border-gold/30 flex-wrap">
+          <span className="text-gold text-xs font-mono font-bold">{selected.size} selected</span>
+          <div className="flex-1" />
+          <button
+            onClick={handleBulkMarkPaid}
+            className="flex items-center gap-2 bg-green-500/10 border border-green-500/30 text-green-400 px-4 py-1.5 text-xs font-bold uppercase tracking-widest hover:bg-green-500/20 transition-all"
+          >
+            <FileCheck size={13} /> Mark Paid
+          </button>
+          <button
+            onClick={handleBulkDelete}
+            className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-1.5 text-xs font-bold uppercase tracking-widest hover:bg-red-500/20 transition-all"
+          >
+            <Trash2 size={13} /> Delete
+          </button>
+          <button
+            onClick={() => setSelected(new Set())}
+            className="text-white/30 hover:text-white text-[10px] uppercase tracking-widest font-mono transition-colors"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       {/* List */}
       {filtered.length === 0 ? (
         <div className="text-center py-16 text-white/20 font-mono text-sm">
@@ -357,7 +484,13 @@ export default function InvoiceTab() {
         </div>
       ) : (
         <div className="border border-white/10">
-          <div className="hidden sm:grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-4 px-4 py-2 border-b border-white/10 bg-white/3">
+          <div className="hidden sm:grid grid-cols-[20px_1fr_auto_auto_auto_auto_auto] gap-4 px-4 py-2 border-b border-white/10 bg-white/3 items-center">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleAll}
+              className="w-3.5 h-3.5 accent-gold cursor-pointer"
+            />
             {['Title / Vendor', 'Date Received', 'Due Date', 'Amount', 'Status', ''].map((h, i) => (
               <span key={i} className="text-white/30 text-[9px] uppercase tracking-widest font-mono">{h}</span>
             ))}
@@ -367,12 +500,25 @@ export default function InvoiceTab() {
             return (
               <div
                 key={inv.id}
-                className={`grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto_auto_auto] gap-3 sm:gap-4 items-center px-4 py-4 ${
+                className={`grid grid-cols-1 sm:grid-cols-[20px_1fr_auto_auto_auto_auto_auto] gap-3 sm:gap-4 items-center px-4 py-4 ${
                   idx < filtered.length - 1 ? 'border-b border-white/5' : ''
-                } hover:bg-white/3 transition-colors`}
+                } transition-colors ${selected.has(inv.id) ? 'bg-gold/5' : 'hover:bg-white/3'}`}
               >
+                <input
+                  type="checkbox"
+                  checked={selected.has(inv.id)}
+                  onChange={() => toggleSelect(inv.id)}
+                  className="w-3.5 h-3.5 accent-gold cursor-pointer hidden sm:block"
+                />
                 <div>
-                  <p className="text-white text-sm font-medium leading-tight">{inv.title || inv.fileName}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-white text-sm font-medium leading-tight">{inv.title || inv.fileName}</p>
+                    {inv.invoiceNo && (
+                      <span className="text-[9px] uppercase tracking-widest font-mono px-1.5 py-0.5 border border-white/10 text-white/30">
+                        {inv.invoiceNo}
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-2 mt-0.5">
                     {inv.vendor
                       ? <p className="text-white/30 text-xs font-mono">{inv.vendor}</p>
@@ -424,6 +570,7 @@ export default function InvoiceTab() {
       {editInvoice && (
         <InvoiceModal
           invoice={editInvoice}
+          suppliers={suppliers}
           onClose={() => setEditInvoice(null)}
           onSaved={updated => setEditInvoice(updated)}
           onDelete={inv => handleDelete(inv)}
@@ -437,11 +584,13 @@ export default function InvoiceTab() {
 
 function InvoiceModal({
   invoice,
+  suppliers,
   onClose,
   onSaved,
   onDelete,
 }: {
   invoice: Invoice;
+  suppliers: Supplier[];
   onClose: () => void;
   onSaved: (updated: Invoice) => void;
   onDelete: (inv: Invoice) => void;
@@ -459,6 +608,13 @@ function InvoiceModal({
   const [saving,       setSaving]       = useState(false);
   const [saved,        setSaved]        = useState(false);
   const [saveError,    setSaveError]    = useState('');
+
+  // Supplier combobox
+  const [supplierOpen, setSupplierOpen] = useState(false);
+  const matchedSuppliers = suppliers.filter(s =>
+    s.name.toLowerCase().includes(vendor.toLowerCase())
+  );
+  const isLinked = suppliers.some(s => s.name.toLowerCase() === vendor.toLowerCase());
 
   const inputCls  = "w-full bg-white/5 border border-white/10 px-3 py-2 text-white text-sm focus:outline-none focus:border-gold/50 transition-colors";
   const selectCls = "w-full bg-zinc-800 border border-white/10 px-3 py-2 text-white text-sm focus:outline-none focus:border-gold/50 transition-colors cursor-pointer [&>option]:bg-zinc-800 [&>option]:text-white";
@@ -503,6 +659,11 @@ function InvoiceModal({
             <h3 className="text-white font-serif text-lg leading-tight truncate">
               {title || invoice.fileName}
             </h3>
+            {invoice.invoiceNo && (
+              <span className="shrink-0 text-[10px] uppercase tracking-widest font-mono px-2 py-0.5 border border-white/10 text-white/40">
+                {invoice.invoiceNo}
+              </span>
+            )}
             <span className={`shrink-0 text-[10px] uppercase tracking-widest font-mono px-2 py-0.5 border ${STATUS_CFG[status].cls}`}>
               {STATUS_CFG[status].label}
             </span>
@@ -572,12 +733,35 @@ function InvoiceModal({
               </Field>
 
               <Field label="Vendor / Supplier">
-                <input
-                  className={inputCls}
-                  value={vendor}
-                  onChange={e => setVendor(e.target.value)}
-                  placeholder="e.g. Sysco Foods"
-                />
+                <div className="relative">
+                  <input
+                    className={inputCls}
+                    value={vendor}
+                    onChange={e => { setVendor(e.target.value); setSupplierOpen(true); }}
+                    onFocus={() => setSupplierOpen(true)}
+                    onBlur={() => setTimeout(() => setSupplierOpen(false), 150)}
+                    placeholder="Select from suppliers or type name"
+                  />
+                  {isLinked && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] uppercase tracking-widest font-mono text-green-400 border border-green-500/30 bg-green-500/10 px-1.5 py-0.5">
+                      Linked
+                    </span>
+                  )}
+                  {supplierOpen && matchedSuppliers.length > 0 && (
+                    <div className="absolute z-20 top-full left-0 right-0 bg-zinc-900 border border-white/10 border-t-0 max-h-44 overflow-y-auto shadow-xl">
+                      {matchedSuppliers.map(s => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onMouseDown={() => { setVendor(s.name); setSupplierOpen(false); }}
+                          className="w-full text-left px-3 py-2.5 text-sm text-white/70 hover:bg-white/10 hover:text-white transition-colors font-mono"
+                        >
+                          {s.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </Field>
 
               <div className="grid grid-cols-2 gap-3">
