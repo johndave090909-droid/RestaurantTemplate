@@ -2,14 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Save, Loader2, Check, Plus, Trash2, Upload, QrCode } from 'lucide-react';
 import { useSiteConfig, SiteConfig } from '../../../context/SiteConfigContext';
 import { collection, addDoc, deleteDoc, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
-import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { db, storage } from '../../../lib/firebase';
+import { db } from '../../../lib/firebase';
 
 interface DigitalPayment {
   id: string;
   name: string;
   qrUrl: string;
-  storagePath?: string;
 }
 
 export default function SiteSettingsTab() {
@@ -58,14 +56,15 @@ export default function SiteSettingsTab() {
     if (!newName.trim() || !newFile) return;
     setAddingDigital(true);
     try {
-      const path = `digitalPayments/${Date.now()}_${newFile.name}`;
-      const sRef = storageRef(storage, path);
-      await uploadBytes(sRef, newFile);
-      const qrUrl = await getDownloadURL(sRef);
+      const qrUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(newFile);
+      });
       await addDoc(collection(db, 'digitalPayments'), {
         name: newName.trim(),
         qrUrl,
-        storagePath: path,
         createdAt: serverTimestamp(),
       });
       setNewName('');
@@ -81,9 +80,6 @@ export default function SiteSettingsTab() {
     setDeletingId(payment.id);
     try {
       await deleteDoc(doc(db, 'digitalPayments', payment.id));
-      if (payment.storagePath) {
-        try { await deleteObject(storageRef(storage, payment.storagePath)); } catch { /* already gone */ }
-      }
     } finally {
       setDeletingId(null);
     }
